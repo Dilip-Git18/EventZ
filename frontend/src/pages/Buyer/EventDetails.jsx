@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import Loader from '../../components/Common/Loader';
-import { Calendar, MapPin, Ticket, ArrowLeft, ShieldCheck, Info } from 'lucide-react';
+import { Calendar, MapPin, Ticket, ArrowLeft, Info } from 'lucide-react';
 
 const EventDetails = () => {
   const { id } = useParams();
@@ -294,7 +294,10 @@ const EventDetails = () => {
               </div>
             ) : (
               <div style={{ textAlign: 'center', padding: '1rem 0', color: 'var(--text-muted)' }}>
-                No ticket configurations set for this event.
+                No ticket configurations are available yet.
+                <div style={{ marginTop: '0.5rem', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  The organizer needs to add at least one ticket category before buyers can reserve tickets for this event.
+                </div>
               </div>
             )}
 

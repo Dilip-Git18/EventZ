@@ -142,6 +142,47 @@ router.get('/dashboard-analytics', protect, authorizeRole('organizer'), async (r
   }
 });
 
+// @desc    Get organizer's created events
+// @route   GET /api/organizer/events
+// @access  Private (Organizer)
+router.get('/events', protect, authorizeRole('organizer'), async (req, res, next) => {
+  try {
+    const events = await Event.find({ organizer: req.user._id })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (events.length === 0) {
+      return res.status(200).json({ success: true, count: 0, events: [] });
+    }
+
+    const eventIds = events.map((event) => event._id);
+    const categories = await TicketCategory.find({ event: { $in: eventIds } }).lean();
+
+    const categoriesByEvent = categories.reduce((accumulator, category) => {
+      const eventId = category.event.toString();
+      if (!accumulator[eventId]) {
+        accumulator[eventId] = [];
+      }
+
+      accumulator[eventId].push(category);
+      return accumulator;
+    }, {});
+
+    const eventsWithSummary = events.map((event) => {
+      const eventCategories = categoriesByEvent[event._id.toString()] || [];
+      return {
+        ...event,
+        categoriesCount: eventCategories.length,
+        hasTicketsConfigured: eventCategories.length > 0
+      };
+    });
+
+    res.status(200).json({ success: true, count: eventsWithSummary.length, events: eventsWithSummary });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // @desc    Get all bookings for organizer's events
 // @route   GET /api/organizer/bookings
 // @access  Private (Organizer)

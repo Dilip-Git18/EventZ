@@ -1,20 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Loader from '../../components/Common/Loader';
-import { DollarSign, Ticket, Users, BarChart3, Calendar, PlusCircle, CheckCircle, Percent } from 'lucide-react';
+import { DollarSign, Ticket, Users, BarChart3, PlusCircle, Percent, MapPin, CircleAlert } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const OrganizerDashboard = () => {
   const { apiFetch, showToast } = useAuth();
   const [analytics, setAnalytics] = useState(null);
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchDashboardData = async () => {
     try {
-      const data = await apiFetch('/organizer/dashboard-analytics');
-      if (data.success) {
-        setAnalytics(data);
-      }
+      const [analyticsData, eventsData] = await Promise.all([
+        apiFetch('/organizer/dashboard-analytics'),
+        apiFetch('/organizer/events')
+      ]);
+
+      if (analyticsData.success) setAnalytics(analyticsData);
+      if (eventsData.success) setEvents(eventsData.events || []);
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -32,6 +36,15 @@ const OrganizerDashboard = () => {
     summary: { totalRevenue: 0, totalTicketsSold: 0, bookingsCount: 0, attendanceRate: 0, totalCheckedIn: 0 },
     categories: [],
     trends: []
+  };
+
+  const formatEventDate = (value) => {
+    const date = new Date(value);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
   };
 
   // Helper to render a custom SVG Line Chart for revenue trends
@@ -291,6 +304,98 @@ const OrganizerDashboard = () => {
             </table>
           </div>
         </div>
+      </div>
+
+      {/* Created events list */}
+      <div className="glass-panel" style={{ marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '1rem', flexWrap: 'wrap' }}>
+          <div>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: '#fff', marginBottom: '0.25rem' }}>
+              Created Events
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+              Events you created, with ticket category status.
+            </p>
+          </div>
+
+          <Link to="/organizer/create-event" className="btn btn-secondary" style={{ padding: '10px 14px', fontSize: '13px' }}>
+            <PlusCircle size={16} />
+            <span>Create Another</span>
+          </Link>
+        </div>
+
+        {events.length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px' }}>
+            {events.map((event) => {
+              const bannerStyle = event.bannerUrl
+                ? { backgroundImage: `url(http://localhost:5001${event.bannerUrl})` }
+                : { background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.18), rgba(236, 72, 153, 0.12))' };
+
+              return (
+                <div key={event._id} className="glass-card" style={{ padding: '0.9rem', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{
+                    height: '140px',
+                    borderRadius: '10px',
+                    border: '1px solid var(--glass-border)',
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    ...bannerStyle
+                  }} />
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <h4 style={{ color: '#fff', fontSize: '1rem', fontWeight: 700, marginBottom: '4px' }}>
+                        {event.title}
+                      </h4>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                        <MapPin size={13} />
+                        <span>{event.venueName}</span>
+                      </div>
+                    </div>
+
+                    <span style={{
+                      padding: '4px 10px',
+                      borderRadius: '999px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      color: event.hasTicketsConfigured ? 'var(--accent-green)' : 'var(--accent-pink)',
+                      background: event.hasTicketsConfigured ? 'rgba(16, 185, 129, 0.1)' : 'rgba(236, 72, 153, 0.12)'
+                    }}>
+                      {event.hasTicketsConfigured ? 'Tickets ready' : 'Needs categories'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    <span>{formatEventDate(event.startDate)}</span>
+                    <span>{event.categoriesCount || 0} categories</span>
+                  </div>
+
+                  {!event.hasTicketsConfigured && (
+                    <div style={{
+                      display: 'flex',
+                      gap: '8px',
+                      alignItems: 'flex-start',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      background: 'rgba(59, 130, 246, 0.08)',
+                      border: '1px solid rgba(59, 130, 246, 0.14)',
+                      color: 'var(--text-secondary)',
+                      fontSize: '12px',
+                      lineHeight: 1.4
+                    }}>
+                      <CircleAlert size={16} style={{ color: 'var(--accent-blue)', flexShrink: 0, marginTop: '1px' }} />
+                      <span>Add at least one ticket category before buyers can reserve this event.</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)' }}>
+            No events created yet.
+          </div>
+        )}
       </div>
     </div>
   );

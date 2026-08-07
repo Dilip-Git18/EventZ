@@ -47,7 +47,18 @@ const upload = multer({
 const eventCreateSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters'),
   description: z.string().min(10, 'Description must be at least 10 characters'),
-  bannerUrl: z.string().url('Please provide a valid banner image URL or upload one'),
+  bannerUrl: z.string().min(1, 'Please provide a valid banner image URL or upload one').refine((value) => {
+    if (value.startsWith('/uploads/')) {
+      return true;
+    }
+
+    try {
+      new URL(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'Please provide a valid banner image URL or upload one'),
   venueName: z.string().min(2, 'Venue name is required'),
   venueAddress: z.string().min(5, 'Venue address is required'),
   startDate: z.string().transform((str) => new Date(str)),
