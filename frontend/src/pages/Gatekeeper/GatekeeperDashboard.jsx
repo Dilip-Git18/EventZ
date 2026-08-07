@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Loader from '../../components/Common/Loader';
 import { ScanQrCode, Clipboard, FileUp, CheckCircle2, AlertTriangle, XCircle, History } from 'lucide-react';
+import jsQR from 'jsqr';
 
 const GatekeeperDashboard = () => {
   const { apiFetch, showToast } = useAuth();
@@ -10,6 +11,14 @@ const GatekeeperDashboard = () => {
   const [activeTab, setActiveTab] = useState('paste'); // 'paste' or 'upload' or 'camera'
   const [rawPayload, setRawPayload] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [decodingFile, setDecodingFile] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState('idle');
+  const [cameraError, setCameraError] = useState('');
+
+  const videoRef = useRef(null);
+  const cameraStreamRef = useRef(null);
+  const cameraLoopRef = useRef(null);
+  const cameraCanvasRef = useRef(null);
 
   // Validation results
   const [result, setResult] = useState(null); // { success, duplicate, message, ticketDetails }
@@ -33,9 +42,9 @@ const GatekeeperDashboard = () => {
     fetchScanLogs();
   }, []);
 
-  const handleValidate = async (e) => {
-    if (e) e.preventDefault();
-    if (!rawPayload.trim()) return;
+  const validatePayload = async (payload) => {
+    const ticketPayload = String(payload || '').trim();
+    if (!ticketPayload) return;
 
     setSubmitting(true);
     setResult(null);
@@ -43,7 +52,7 @@ const GatekeeperDashboard = () => {
     try {
       const data = await apiFetch('/gatekeeper/validate-ticket', {
         method: 'POST',
-        body: JSON.stringify({ qrCodeData: rawPayload.trim() })
+        body: JSON.stringify({ qrCodeData: ticketPayload })
       });
 
       if (data.success) {
@@ -53,7 +62,7 @@ const GatekeeperDashboard = () => {
           ticketDetails: data.ticketDetails
         });
         showToast('Ticket validated successfully! Entry approved.', 'success');
-        setRawPayload(''); // clear input
+        setRawPayload('');
         fetchScanLogs(); // refresh history
       }
     } catch (err) {
@@ -80,30 +89,336 @@ const GatekeeperDashboard = () => {
     }
   };
 
-  // Helper for mock uploading and parsing QR code screenshot
-  const handleMockFileUpload = (e) => {
+  const handleValidate = async (e) => {
+    if (e) e.preventDefault();
+    await validatePayload(rawPayload);
+  };
+
+  const readFileAsText = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || '').trim());
+    reader.onerror = () => reject(new Error('Failed to read file.'));
+    reader.readAsText(file);
+  });
+
+  const extractJwtFromText = (text) => {
+    const normalizedText = String(text || '');
+    const taggedSignature = normalizedText.match(/QR-SIGNATURE\s*:?\s*([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/i);
+    if (taggedSignature?.[1]) {
+      return taggedSignature[1].trim();
+    }
+
+    const jwtMatch = normalizedText.match(/([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/);
+    return jwtMatch?.[1]?.trim() || '';
+  };
+
+  const scanCanvasForQr = async (canvas) => {
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) {
+      return '';
+    }
+
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+
+    const attemptedRegions = [
+      imageData,
+      cropImageData(imageData, 0.54, 0.06, 0.42, 0.88),
+      cropImageData(imageData, 0.48, 0.04, 0.48, 0.92),
+      cropImageData(imageData, 0.04, 0.04, 0.92, 0.92)
+    ].filter(Boolean);
+
+    for (const region of attemptedRegions) {
+      const code = jsQR(region.data, region.width, region.height, {
+        inversionAttempts: 'attemptBoth'
+      });
+
+      if (code?.data) {
+        return code.data.trim();
+      }
+    }
+
+    return '';
+  };
+
+  const cropImageData = (imageData, leftRatio, topRatio, widthRatio, heightRatio) => {
+    const cropCanvas = document.createElement('canvas');
+    const cropWidth = Math.max(1, Math.floor(imageData.width * widthRatio));
+    const cropHeight = Math.max(1, Math.floor(imageData.height * heightRatio));
+    const startX = Math.max(0, Math.floor(imageData.width * leftRatio));
+    const startY = Math.max(0, Math.floor(imageData.height * topRatio));
+
+    cropCanvas.width = cropWidth;
+    cropCanvas.height = cropHeight;
+
+    const cropContext = cropCanvas.getContext('2d', { willReadFrequently: true });
+    if (!cropContext) {
+      return null;
+    }
+
+    const sourceCanvas = document.createElement('canvas');
+    sourceCanvas.width = imageData.width;
+    sourceCanvas.height = imageData.height;
+    const sourceContext = sourceCanvas.getContext('2d', { willReadFrequently: true });
+    if (!sourceContext) {
+      return null;
+    }
+
+    sourceContext.putImageData(imageData, 0, 0);
+    cropContext.drawImage(sourceCanvas, startX, startY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+    return cropContext.getImageData(0, 0, cropWidth, cropHeight);
+  };
+
+  const decodeImageFile = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        import('@zxing/browser')
+          .then(async ({ BrowserQRCodeReader }) => {
+            const canvasCandidates = [1, 2, 3].map((scale) => {
+              const canvas = document.createElement('canvas');
+              canvas.width = image.width * scale;
+              canvas.height = image.height * scale;
+
+              const context = canvas.getContext('2d', { willReadFrequently: true });
+              if (context) {
+                context.drawImage(image, 0, 0, canvas.width, canvas.height);
+              }
+
+              return canvas;
+            });
+
+            for (const canvas of canvasCandidates) {
+              const context = canvas.getContext('2d', { willReadFrequently: true });
+              if (!context) continue;
+
+              const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+              const grayscale = new Uint8ClampedArray(imageData.data);
+
+              for (let index = 0; index < grayscale.length; index += 4) {
+                const average = (grayscale[index] + grayscale[index + 1] + grayscale[index + 2]) / 3;
+                const value = average > 185 ? 255 : 0;
+                grayscale[index] = value;
+                grayscale[index + 1] = value;
+                grayscale[index + 2] = value;
+              }
+
+              const processedCanvas = document.createElement('canvas');
+              processedCanvas.width = imageData.width;
+              processedCanvas.height = imageData.height;
+              const processedContext = processedCanvas.getContext('2d', { willReadFrequently: true });
+              if (!processedContext) continue;
+
+              processedContext.putImageData(new ImageData(grayscale, imageData.width, imageData.height), 0, 0);
+
+              const qrReader = new BrowserQRCodeReader();
+
+              try {
+                const result = await qrReader.decodeFromCanvas(processedCanvas);
+                if (result?.getText()) {
+                  resolve(result.getText().trim());
+                  return;
+                }
+              } catch {
+                // fall through to jsQR region scans and hidden-text fallback
+              }
+
+              const scanned = await scanCanvasForQr(processedCanvas);
+              if (scanned) {
+                resolve(scanned);
+                return;
+              }
+            }
+
+            const fallbackText = extractJwtFromText(await readFileAsText(file));
+            if (fallbackText) {
+              resolve(fallbackText);
+              return;
+            }
+
+            reject(new Error('No QR code found in this image.'));
+          })
+          .catch(() => reject(new Error('QR decoder could not be loaded.')));
+      };
+
+      image.onerror = () => reject(new Error('Could not load the selected image.'));
+      image.src = String(reader.result || '');
+    };
+    reader.onerror = () => reject(new Error('Failed to read image file.'));
+    reader.readAsDataURL(file);
+  });
+
+  const decodePdfFile = async (file) => {
+    const pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+      'pdfjs-dist/build/pdf.worker.min.mjs',
+      import.meta.url
+    ).toString();
+
+    const arrayBuffer = await file.arrayBuffer();
+    const pdfDocument = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
+      const page = await pdfDocument.getPage(pageNumber);
+      const viewport = page.getViewport({ scale: 3 });
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+
+      if (!context) {
+        continue;
+      }
+
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+
+      await page.render({ canvasContext: context, viewport }).promise;
+
+      const decoded = await scanCanvasForQr(canvas);
+      if (decoded) {
+        return decoded;
+      }
+
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item) => item.str).join(' ');
+      const extractedToken = extractJwtFromText(pageText);
+      if (extractedToken) {
+        return extractedToken;
+      }
+    }
+
+    throw new Error('No QR code found in the PDF ticket.');
+  };
+
+  const stopCameraScan = async () => {
+    if (cameraLoopRef.current) {
+      cancelAnimationFrame(cameraLoopRef.current);
+      cameraLoopRef.current = null;
+    }
+
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setCameraStatus('idle');
+  };
+
+  const scanCurrentFrame = async () => {
+    const video = videoRef.current;
+    if (!video || video.readyState < 2) {
+      cameraLoopRef.current = requestAnimationFrame(scanCurrentFrame);
+      return;
+    }
+
+    const canvas = cameraCanvasRef.current || document.createElement('canvas');
+    cameraCanvasRef.current = canvas;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+
+    if (!context) {
+      cameraLoopRef.current = requestAnimationFrame(scanCurrentFrame);
+      return;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    const qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: 'attemptBoth'
+    });
+
+    if (qrCode?.data) {
+      const text = qrCode.data.trim();
+      setRawPayload(text);
+      showToast('Camera scan successful. Validating ticket...', 'success');
+      await validatePayload(text);
+      stopCameraScan();
+      setActiveTab('paste');
+      return;
+    }
+
+    cameraLoopRef.current = requestAnimationFrame(scanCurrentFrame);
+  };
+
+  const startCameraScan = async () => {
+    if (cameraStreamRef.current || !videoRef.current) {
+      return;
+    }
+
+    setCameraError('');
+    setCameraStatus('requesting');
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      });
+
+      cameraStreamRef.current = stream;
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+
+      setCameraStatus('scanning');
+      cameraLoopRef.current = requestAnimationFrame(scanCurrentFrame);
+    } catch (err) {
+      setCameraError(err.message || 'Unable to start camera scanner.');
+      setCameraStatus('error');
+      showToast(err.message || 'Unable to start camera scanner.', 'error');
+    }
+  };
+
+  // Decode uploaded QR image or raw token text
+  const handleMockFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    showToast('File selected. Simulating QR decryption...', 'success');
-    
-    // For local testing, we instruct the user to copy-paste the token,
-    // but we can offer a file reader that simulates reading the raw text.
-    // If the file name contains a JWT pattern, we can extract it, 
-    // but let's read the file as text just in case the user saves the raw token in a text file.
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target.result;
-      if (content && content.length > 50) {
-        setRawPayload(content.trim());
-        showToast('QR signature extracted! Click Validate Ticket.', 'success');
-        setActiveTab('paste');
+    setDecodingFile(true);
+
+    try {
+      let payload = '';
+
+      if (file.type.startsWith('image/')) {
+        payload = await decodeImageFile(file);
+      } else if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        payload = await decodePdfFile(file);
       } else {
-        showToast('Could not decode QR signature from this file format.', 'error');
+        payload = await readFileAsText(file);
       }
-    };
-    reader.readAsText(file);
+
+      if (!payload || payload.length < 20) {
+        throw new Error('Could not detect a valid QR signature in this file.');
+      }
+
+      setRawPayload(payload);
+      setActiveTab('paste');
+      showToast('QR signature extracted. Validate the ticket now.', 'success');
+    } catch (err) {
+      showToast(err.message || 'Could not decode QR signature from this file.', 'error');
+    } finally {
+      setDecodingFile(false);
+      e.target.value = '';
+    }
   };
+
+  useEffect(() => {
+    if (activeTab === 'camera') {
+      startCameraScan();
+    } else {
+      stopCameraScan();
+    }
+
+    return () => {
+      stopCameraScan();
+    };
+  }, [activeTab]);
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: '30px', alignItems: 'start' }} className="gatekeeper-grid">
@@ -150,6 +465,21 @@ const GatekeeperDashboard = () => {
               <FileUp size={14} />
               <span>Load QR File</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('camera')}
+              className="btn btn-secondary"
+              style={{
+                flex: 1,
+                fontSize: '13px',
+                padding: '10px',
+                background: activeTab === 'camera' ? 'var(--accent-purple)' : 'var(--bg-tertiary)',
+                borderColor: activeTab === 'camera' ? 'var(--accent-purple)' : 'var(--glass-border)'
+              }}
+            >
+              <ScanQrCode size={14} />
+              <span>Use Camera</span>
+            </button>
           </div>
 
           {/* Form */}
@@ -179,17 +509,100 @@ const GatekeeperDashboard = () => {
             <div style={{ textAlign: 'center', padding: '1.5rem 1rem', border: '2px dashed var(--glass-border)', borderRadius: '8px' }}>
               <FileUp size={36} style={{ color: 'var(--text-muted)', marginBottom: '10px' }} />
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '14px' }}>
-                Load ticket signature from text or image file.
+                Load a QR image, screenshot, or raw token text file.
               </p>
               <input
                 type="file"
                 id="qr-file-input"
+                accept="image/*,application/pdf,.pdf,.txt,.json"
                 onChange={handleMockFileUpload}
                 style={{ display: 'none' }}
               />
               <label htmlFor="qr-file-input" className="btn btn-secondary" style={{ cursor: 'pointer' }}>
-                Choose file
+                {decodingFile ? 'Decoding QR...' : 'Choose file'}
               </label>
+            </div>
+          )}
+
+          {activeTab === 'camera' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{
+                position: 'relative',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                border: '1px solid var(--glass-border)',
+                background: 'rgba(255,255,255,0.02)'
+              }}>
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  style={{ width: '100%', minHeight: '280px', objectFit: 'cover', display: 'block' }}
+                />
+
+                <div style={{
+                  position: 'absolute',
+                  inset: '18% 15%',
+                  border: '2px solid rgba(124, 58, 237, 0.85)',
+                  borderRadius: '14px',
+                  boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.22)'
+                }} />
+
+                <div style={{
+                  position: 'absolute',
+                  bottom: '12px',
+                  left: '12px',
+                  right: '12px',
+                  padding: '10px 12px',
+                  borderRadius: '10px',
+                  background: 'rgba(10, 11, 14, 0.72)',
+                  backdropFilter: 'blur(8px)',
+                  color: '#fff',
+                  fontSize: '12px',
+                  lineHeight: 1.4
+                }}>
+                  <strong style={{ color: 'var(--accent-purple)' }}>
+                    {cameraStatus === 'requesting' ? 'Requesting camera access...' : cameraStatus === 'scanning' ? 'Scanning for QR code...' : 'Camera ready'}
+                  </strong>
+                  <div style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    Hold the ticket QR inside the frame. The scan will validate automatically.
+                  </div>
+                </div>
+              </div>
+
+              {cameraError && (
+                <div style={{
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  color: 'var(--text-secondary)',
+                  fontSize: '12px'
+                }}>
+                  {cameraError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={startCameraScan}
+                  disabled={cameraStatus === 'requesting' || cameraStatus === 'scanning'}
+                >
+                  <ScanQrCode size={14} />
+                  <span>{cameraStatus === 'requesting' || cameraStatus === 'scanning' ? 'Scanning...' : 'Start Scanner'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={stopCameraScan}
+                >
+                  Stop Camera
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -240,18 +653,54 @@ const GatekeeperDashboard = () => {
                 {result.success && result.ticketDetails && (
                   <div style={{
                     display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '12px',
+                    gridTemplateColumns: '88px 1fr',
+                    gap: '14px',
+                    alignItems: 'start',
                     padding: '12px',
                     background: 'rgba(0, 0, 0, 0.2)',
                     borderRadius: '6px',
                     fontSize: '13px',
                     color: 'var(--text-main)'
                   }}>
-                    <div>Event: <strong>{result.ticketDetails.eventName}</strong></div>
-                    <div>Category: <strong>{result.ticketDetails.categoryName}</strong></div>
-                    <div>Attendee: <strong>{result.ticketDetails.buyerName}</strong></div>
-                    <div>Serial: <strong>{result.ticketDetails.ticketNumber}</strong></div>
+                    <div style={{ width: '88px' }}>
+                      {result.ticketDetails.buyerPhoto ? (
+                        <img
+                          src={`http://localhost:5001${result.ticketDetails.buyerPhoto}`}
+                          alt="Buyer profile"
+                          style={{ width: '88px', height: '88px', objectFit: 'cover', borderRadius: '12px', border: '1px solid var(--glass-border)' }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: '88px',
+                          height: '88px',
+                          borderRadius: '12px',
+                          border: '1px solid rgba(245, 158, 11, 0.35)',
+                          background: 'rgba(245, 158, 11, 0.08)',
+                          color: 'var(--text-secondary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '11px',
+                          textAlign: 'center',
+                          padding: '8px',
+                          lineHeight: 1.3
+                        }}>
+                          Photo not uploaded
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div>Event: <strong>{result.ticketDetails.eventName}</strong></div>
+                      <div>Category: <strong>{result.ticketDetails.categoryName}</strong></div>
+                      <div>Attendee: <strong>{result.ticketDetails.buyerName}</strong></div>
+                      <div>Serial: <strong>{result.ticketDetails.ticketNumber}</strong></div>
+                      {!result.ticketDetails.buyerPhoto && (
+                        <div style={{ gridColumn: '1 / -1', color: 'var(--accent-yellow)', fontSize: '12px' }}>
+                          Warning: this buyer has not uploaded a profile photo yet.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

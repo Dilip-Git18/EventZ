@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { User, Mail, Lock, Shield, Save } from 'lucide-react';
+import { User, Mail, Lock, Shield, Save, Camera } from 'lucide-react';
 
 const Profile = () => {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, uploadProfilePhoto } = useAuth();
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [updating, setUpdating] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState(user?.profilePhoto || '');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -26,11 +28,41 @@ const Profile = () => {
     setConfirmPassword('');
   };
 
+  const handlePhotoChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setPhotoPreview(URL.createObjectURL(file));
+    setPhotoUploading(true);
+
+    try {
+      await uploadProfilePhoto(file);
+    } finally {
+      setPhotoUploading(false);
+      e.target.value = '';
+    }
+  };
+
   return (
     <div style={{ maxWidth: '560px', margin: '0 auto' }}>
       <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', fontWeight: 800, color: '#fff', marginBottom: '1.5rem' }}>
         My Profile Settings
       </h1>
+
+      {!user?.profilePhoto && (
+        <div style={{
+          marginBottom: '1rem',
+          padding: '0.9rem 1rem',
+          borderRadius: '8px',
+          background: 'rgba(245, 158, 11, 0.08)',
+          border: '1px solid rgba(245, 158, 11, 0.25)',
+          color: 'var(--text-secondary)',
+          fontSize: '13px',
+          lineHeight: 1.5
+        }}>
+          Upload a profile photo so gatekeepers can verify your identity at the entrance.
+        </div>
+      )}
 
       <div className="glass-card" style={{ padding: '2rem' }}>
         
@@ -63,6 +95,46 @@ const Profile = () => {
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>
               Role level: {user?.role}
             </span>
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Profile Photo</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+            <div style={{
+              width: '88px',
+              height: '88px',
+              borderRadius: '50%',
+              overflow: 'hidden',
+              border: '1px solid var(--glass-border)',
+              background: 'rgba(255,255,255,0.03)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              {photoPreview ? (
+                <img src={photoPreview} alt="Profile preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <User size={30} style={{ color: 'var(--text-muted)' }} />
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <input
+                type="file"
+                id="profile-photo-upload"
+                accept="image/*"
+                onChange={handlePhotoChange}
+                style={{ display: 'none' }}
+              />
+              <label htmlFor="profile-photo-upload" className="btn btn-secondary" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                <Camera size={16} />
+                <span>{photoUploading ? 'Uploading photo...' : 'Choose Photo'}</span>
+              </label>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                JPG, PNG, or WEBP. Used only for gatekeeper verification.
+              </span>
+            </div>
           </div>
         </div>
 

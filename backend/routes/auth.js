@@ -1,5 +1,8 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { z } from 'zod';
 import User from '../models/User.js';
 import { protect } from '../middleware/auth.js';
@@ -17,6 +20,36 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.string().email('Please provide a valid email'),
   password: z.string().min(1, 'Password is required')
+});
+
+const profilePhotoDir = './uploads/profile-photos';
+if (!fs.existsSync(profilePhotoDir)) {
+  fs.mkdirSync(profilePhotoDir, { recursive: true });
+}
+
+const profilePhotoStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    cb(null, profilePhotoDir);
+  },
+  filename(req, file, cb) {
+    cb(null, `profile-${req.user._id}-${Date.now()}${path.extname(file.originalname)}`);
+  }
+});
+
+const profilePhotoUpload = multer({
+  storage: profilePhotoStorage,
+  limits: { fileSize: 3 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const filetypes = /jpeg|jpg|png|webp/;
+    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = filetypes.test(file.mimetype);
+
+    if (extname && mimetype) {
+      return cb(null, true);
+    }
+
+    cb(new Error('Profile photo must be a jpeg, jpg, png, or webp image'));
+  }
 });
 
 const profileUpdateSchema = z.object({
@@ -99,9 +132,44 @@ router.get('/me', protect, (req, res) => {
       name: req.user.name,
       email: req.user.email,
       role: req.user.role,
-      status: req.user.status
+      status: req.user.status,
+      profilePhoto: req.user.profilePhoto || ''
     }
   });
+});
+
+// @desc    Upload current user's profile photo
+// @route   POST /api/auth/profile/photo
+// @access  Private
+router.post('/profile/photo', protect, profilePhotoUpload.single('photo'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Please upload a profile photo' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    user.profilePhoto = `/uploads/profile-photos/${req.file.filename}`;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile photo updated successfully',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        profilePhoto: user.profilePhoto
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 // @desc    Update user profile
@@ -156,7 +224,8 @@ const sendTokenResponse = (user, statusCode, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        status: user.status
+        status: user.status,
+        profilePhoto: user.profilePhoto || ''
       }
     });
 };

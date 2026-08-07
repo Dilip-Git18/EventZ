@@ -21,9 +21,11 @@ export const AuthProvider = ({ children }) => {
   const apiFetch = async (endpoint, options = {}) => {
     const url = `${API_BASE_URL}${endpoint}`;
     
+    const isFormData = options.body instanceof FormData;
+
     // Set headers
     const headers = {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...options.headers
     };
 
@@ -141,6 +143,27 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const uploadProfilePhoto = async (photoFile) => {
+    try {
+      const formData = new FormData();
+      formData.append('photo', photoFile);
+
+      const data = await apiFetch('/auth/profile/photo', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (data.success) {
+        setUser(data.user);
+        showToast('Profile photo uploaded successfully!', 'success');
+        return true;
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+      return false;
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -153,6 +176,7 @@ export const AuthProvider = ({ children }) => {
         login: loginUser,
         logout: logoutUser,
         updateProfile,
+        uploadProfilePhoto,
         loadUser
       }}
     >

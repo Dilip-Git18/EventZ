@@ -32,6 +32,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ['active', 'blocked'],
       default: 'active'
+    },
+    profilePhoto: {
+      type: String,
+      default: ''
     }
   },
   {

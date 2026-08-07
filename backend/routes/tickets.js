@@ -202,6 +202,16 @@ router.get('/:id/pdf', protect, async (req, res, next) => {
     // QR Code Placement
     doc.image(qrBuffer, stubX, doc.y + 10, { width: 120, height: 120 });
 
+     // Hidden machine-readable fallback for gatekeeper upload scanners
+     doc.fillColor('#111317')
+       .font('Helvetica')
+       .fontSize(1)
+       .text(`QR-SIGNATURE:${ticket.qrCodeData}`, 18, 252, {
+        width: 560,
+        lineBreak: false,
+        ellipsis: true
+       });
+
     // Terms
     doc.fillColor('#4B5563')
        .font('Helvetica')

@@ -7,6 +7,17 @@ const CreateEvent = () => {
   const { apiFetch, showToast } = useAuth();
   const navigate = useNavigate();
 
+  const categoryOptions = [
+    'General Admission',
+    'VIP',
+    'Premium',
+    'Balcony',
+    'Student',
+    'Early Bird',
+    'Backstage',
+    'Custom'
+  ];
+
   // Step state
   const [step, setStep] = useState(1); // 1 = Details, 2 = Ticket Categories
   const [createdEvent, setCreatedEvent] = useState(null);
@@ -23,7 +34,8 @@ const CreateEvent = () => {
   const [uploadingBanner, setUploadingBanner] = useState(false);
 
   // Form states - Step 2: Add Category
-  const [categoryName, setCategoryName] = useState('');
+  const [categoryPreset, setCategoryPreset] = useState('General Admission');
+  const [customCategoryName, setCustomCategoryName] = useState('');
   const [categoryPrice, setCategoryPrice] = useState('');
   const [categoryCapacity, setCategoryCapacity] = useState('');
   const [categoriesList, setCategoriesList] = useState([]);
@@ -92,14 +104,15 @@ const CreateEvent = () => {
 
   const handleAddCategory = async (e) => {
     e.preventDefault();
-    if (!categoryName || !categoryPrice || !categoryCapacity) return;
+    const resolvedCategoryName = categoryPreset === 'Custom' ? customCategoryName.trim() : categoryPreset;
+    if (!resolvedCategoryName || !categoryPrice || !categoryCapacity) return;
 
     setAddingCategory(true);
     try {
       const data = await apiFetch(`/events/${createdEvent._id}/categories`, {
         method: 'POST',
         body: JSON.stringify({
-          name: categoryName,
+          name: resolvedCategoryName,
           price: parseFloat(categoryPrice),
           capacity: parseInt(categoryCapacity)
         })
@@ -107,9 +120,10 @@ const CreateEvent = () => {
 
       if (data.success) {
         setCategoriesList((prev) => [...prev, data.category]);
-        showToast(`Category '${categoryName}' added!`, 'success');
+        showToast(`Category '${resolvedCategoryName}' added!`, 'success');
         // Reset category form
-        setCategoryName('');
+        setCategoryPreset('General Admission');
+        setCustomCategoryName('');
         setCategoryPrice('');
         setCategoryCapacity('');
       }
@@ -344,15 +358,33 @@ const CreateEvent = () => {
             <form onSubmit={handleAddCategory}>
               <div className="form-group">
                 <label className="form-label">Category Name</label>
-                <input
-                  type="text"
+                <select
                   className="form-control"
-                  placeholder="e.g. VIP access, General Admission"
-                  value={categoryName}
-                  onChange={(e) => setCategoryName(e.target.value)}
+                  value={categoryPreset}
+                  onChange={(e) => setCategoryPreset(e.target.value)}
                   required
-                />
+                >
+                  {categoryOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
               </div>
+
+              {categoryPreset === 'Custom' && (
+                <div className="form-group">
+                  <label className="form-label">Custom Category Name</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. VIP access, General Admission"
+                    value={customCategoryName}
+                    onChange={(e) => setCustomCategoryName(e.target.value)}
+                    required
+                  />
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div className="form-group">

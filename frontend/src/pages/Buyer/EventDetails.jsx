@@ -269,15 +269,18 @@ const EventDetails = () => {
                       {/* Reserve Options */}
                       {!isSoldOut && event.status !== 'cancelled' && (
                         <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-                          <input
-                            type="number"
+                          <select
                             className="form-control"
                             value={qty}
                             onChange={(e) => handleQuantityChange(cat._id, e.target.value, cat.remaining)}
-                            min="1"
-                            max={Math.min(10, cat.remaining)}
-                            style={{ width: '70px', textAlign: 'center', padding: '6px' }}
-                          />
+                            style={{ width: '84px', textAlign: 'center', padding: '6px' }}
+                          >
+                            {Array.from({ length: Math.min(10, cat.remaining) }, (_, index) => index + 1).map((value) => (
+                              <option key={value} value={value}>
+                                {value}
+                              </option>
+                            ))}
+                          </select>
                           <button
                             className="btn btn-primary"
                             style={{ flex: 1, padding: '8px 12px', fontSize: '13px' }}

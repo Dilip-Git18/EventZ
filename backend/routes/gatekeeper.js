@@ -34,7 +34,7 @@ router.post('/validate-ticket', protect, authorizeRole('gatekeeper', 'admin'), a
     const ticket = await Ticket.findById(ticketId)
       .populate('event')
       .populate('category')
-      .populate('buyer', 'name email')
+      .populate('buyer', 'name email profilePhoto')
       .populate('scannedBy', 'name');
 
     if (!ticket) {
@@ -66,6 +66,7 @@ router.post('/validate-ticket', protect, authorizeRole('gatekeeper', 'admin'), a
         ticketDetails: {
           ticketNumber: ticket.ticketNumber,
           buyerName: ticket.buyer.name,
+          buyerPhoto: ticket.buyer.profilePhoto || '',
           categoryName: ticket.category.name,
           eventName: ticket.event.title,
           scannedAt: ticket.scannedAt
@@ -85,6 +86,7 @@ router.post('/validate-ticket', protect, authorizeRole('gatekeeper', 'admin'), a
       ticketDetails: {
         ticketNumber: ticket.ticketNumber,
         buyerName: ticket.buyer.name,
+        buyerPhoto: ticket.buyer.profilePhoto || '',
         categoryName: ticket.category.name,
         eventName: ticket.event.title,
         seat: ticket.category.name // general category
@@ -105,7 +107,7 @@ router.get('/scan-history', protect, authorizeRole('gatekeeper', 'admin'), async
     const scans = await Ticket.find(query)
       .populate('event', 'title venueName')
       .populate('category', 'name')
-      .populate('buyer', 'name')
+      .populate('buyer', 'name profilePhoto')
       .populate('scannedBy', 'name')
       .sort({ scannedAt: -1 });
 
