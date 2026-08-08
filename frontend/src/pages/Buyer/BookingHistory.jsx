@@ -87,7 +87,7 @@ const BookingHistory = () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     {getStatusBadge(booking.status)}
                     <span style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>
-                      ${booking.totalAmount.toFixed(2)}
+                      ₹{booking.totalAmount.toFixed(2)}
                     </span>
                   </div>
                 </div>

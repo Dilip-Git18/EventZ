@@ -19,12 +19,14 @@ const Checkout = () => {
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvv, setCardCvv] = useState('');
+  const [attendeeNames, setAttendeeNames] = useState([]);
 
   const fetchBooking = async () => {
     try {
       const data = await apiFetch(`/bookings/${id}`);
       if (data.success) {
         setBooking(data.booking);
+        setAttendeeNames(Array.from({ length: data.booking.quantity }, (_, index) => data.booking.attendeeNames?.[index] || user?.name || `Attendee ${index + 1}`));
         // Calculate initial ms left
         const diff = new Date(data.booking.expiresAt) - Date.now();
         setMsLeft(Math.max(0, diff));
@@ -69,7 +71,8 @@ const Checkout = () => {
           paymentDetails: {
             cardName,
             cardNumber
-          }
+          },
+          attendeeNames
         })
       });
 
@@ -200,9 +203,26 @@ const Checkout = () => {
                 <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Quantity</span>
                 <span style={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>{booking.quantity}</span>
               </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '4px' }}>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Ticket Holder Names</span>
+                {attendeeNames.map((name, index) => (
+                  <input
+                    key={index}
+                    type="text"
+                    className="form-control"
+                    placeholder={`Attendee ${index + 1}`}
+                    value={name}
+                    onChange={(e) => {
+                      const next = [...attendeeNames];
+                      next[index] = e.target.value;
+                      setAttendeeNames(next);
+                    }}
+                  />
+                ))}
+              </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Ticket Price</span>
-                <span style={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>${booking.category.price.toFixed(2)} each</span>
+                  <span style={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>₹{booking.category.price.toFixed(2)} each</span>
               </div>
               
               <div style={{
@@ -213,8 +233,8 @@ const Checkout = () => {
                 marginTop: '4px'
               }}>
                 <span style={{ color: '#fff', fontSize: '15px', fontWeight: 700 }}>Total Amount Due</span>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 800, color: 'var(--accent-purple)' }}>
-                  ${booking.totalAmount.toFixed(2)}
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 800, color: 'var(--accent-purple)' }}>
+                    ₹{booking.totalAmount.toFixed(2)}
                 </span>
               </div>
             </div>
@@ -299,7 +319,7 @@ const Checkout = () => {
                 ) : (
                   <>
                     <CheckCircle2 size={16} />
-                    <span>Authorize & Pay ${booking.totalAmount.toFixed(2)}</span>
+                    <span>Authorize & Pay ₹{booking.totalAmount.toFixed(2)}</span>
                   </>
                 )}
               </button>

@@ -262,7 +262,7 @@ const EventDetails = () => {
                           )}
                         </div>
                         <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 800, color: 'var(--accent-purple)' }}>
-                          ${cat.price.toFixed(2)}
+                          ₹{cat.price.toFixed(2)}
                         </span>
                       </div>
 

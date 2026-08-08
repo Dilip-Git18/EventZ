@@ -16,6 +16,7 @@ const EventCard = ({ event }) => {
   
   // Custom capacity check (could be simulated or loaded)
   const totalCapacity = event.categories?.reduce((sum, cat) => sum + cat.capacity, 0) || 0;
+  const formatRupee = (amount) => `₹${amount.toFixed(2)}`;
 
   return (
     <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -116,7 +117,7 @@ const EventCard = ({ event }) => {
           <div>
             <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)' }}>TICKETS FROM</span>
             <span style={{ fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: 700, color: 'var(--accent-purple)' }}>
-              ${minPrice.toFixed(2)}
+              {formatRupee(minPrice)}
             </span>
           </div>
           <Link to={`/events/${event._id}`} className="btn btn-primary" style={{ padding: '6px 14px', fontSize: '12px' }}>

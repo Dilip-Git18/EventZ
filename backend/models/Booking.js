@@ -37,6 +37,10 @@ const bookingSchema = new mongoose.Schema(
     },
     paymentId: {
       type: String
+    },
+    attendeeNames: {
+      type: [String],
+      default: []
     }
   },
   {

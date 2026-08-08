@@ -17,6 +17,8 @@ const reserveSchema = z.object({
   quantity: z.number().int().min(1, 'Quantity must be at least 1').max(10, 'Cannot reserve more than 10 tickets at once')
 });
 
+const attendeeNamesSchema = z.array(z.string().min(2, 'Attendee name must be at least 2 characters')).optional();
+
 const paySchema = z.object({
   paymentDetails: z.object({
     cardName: z.string().min(2, 'Name on card is required').optional(),
@@ -99,7 +101,8 @@ router.post('/reserve', protect, authorizeRole('buyer'), async (req, res, next) 
       quantity,
       totalAmount,
       status: 'PENDING',
-      expiresAt
+      expiresAt,
+      attendeeNames: Array.from({ length: quantity }, () => req.user.name)
     });
 
     // 6. Release Redis lock
@@ -146,6 +149,15 @@ router.post('/:id/pay', protect, authorizeRole('buyer'), async (req, res, next) 
       return res.status(400).json({ success: false, message: 'Reservation has expired. Please select tickets again.' });
     }
 
+    const attendeeNames = attendeeNamesSchema.parse(req.body.attendeeNames) || [];
+
+    if (attendeeNames.length > 0 && attendeeNames.length !== booking.quantity) {
+      return res.status(400).json({
+        success: false,
+        message: `Please provide exactly ${booking.quantity} attendee names.`
+      });
+    }
+
     // Parse mock payment details
     paySchema.parse(req.body);
 
@@ -179,6 +191,7 @@ router.post('/:id/pay', protect, authorizeRole('buyer'), async (req, res, next) 
         event: booking.event,
         category: booking.category,
         buyer: req.user._id,
+        attendeeName: attendeeNames[i] || req.user.name,
         ticketNumber,
         status: 'BOOKED',
         qrCodeData

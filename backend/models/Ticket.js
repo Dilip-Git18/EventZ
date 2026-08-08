@@ -22,6 +22,10 @@ const ticketSchema = new mongoose.Schema(
       ref: 'User',
       required: true
     },
+    attendeeName: {
+      type: String,
+      default: ''
+    },
     ticketNumber: {
       type: String,
       required: true,

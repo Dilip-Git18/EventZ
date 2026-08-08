@@ -24,6 +24,8 @@ const GatekeeperDashboard = () => {
   const [result, setResult] = useState(null); // { success, duplicate, message, ticketDetails }
   const [scanLogs, setScanLogs] = useState([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
+  const [events, setEvents] = useState([]);
+  const [selectedEventId, setSelectedEventId] = useState('');
 
   const fetchScanLogs = async () => {
     try {
@@ -42,6 +44,19 @@ const GatekeeperDashboard = () => {
     fetchScanLogs();
   }, []);
 
+  const fetchEvents = async () => {
+    try {
+      const data = await apiFetch('/events');
+      if (data.success) setEvents(data.events || []);
+    } catch (err) {
+      showToast('Could not load events list', 'error');
+    }
+  };
+
+  useEffect(() => {
+    fetchEvents();
+  }, []);
+
   const validatePayload = async (payload) => {
     const ticketPayload = String(payload || '').trim();
     if (!ticketPayload) return;
@@ -52,7 +67,7 @@ const GatekeeperDashboard = () => {
     try {
       const data = await apiFetch('/gatekeeper/validate-ticket', {
         method: 'POST',
-        body: JSON.stringify({ qrCodeData: ticketPayload })
+        body: JSON.stringify({ qrCodeData: ticketPayload, eventId: selectedEventId || undefined })
       });
 
       if (data.success) {
@@ -66,7 +81,7 @@ const GatekeeperDashboard = () => {
         fetchScanLogs(); // refresh history
       }
     } catch (err) {
-      // Check if duplicate scan error
+      // Check if duplicate scan error or event mismatch
       if (err.message && err.message.includes('DUPLICATE')) {
         // Find if they returned detailed duplicate metadata
         // Since we return 400, our fetch wrapper catches the exception message.
@@ -75,6 +90,18 @@ const GatekeeperDashboard = () => {
           success: false,
           duplicate: true,
           message: err.message
+        });
+      } else if (err.scannedTicket) {
+        // event mismatch details returned from server
+        setResult({
+          success: false,
+          duplicate: false,
+          message: err.message || 'Event mismatch',
+          ticketDetails: {
+            ticketNumber: err.scannedTicket.ticketNumber,
+            attendeeName: err.scannedTicket.attendeeName,
+            eventName: err.scannedTicket.eventName
+          }
         });
       } else {
         setResult({
@@ -434,6 +461,19 @@ const GatekeeperDashboard = () => {
 
         {/* Validator Interface */}
         <div className="glass-card" style={{ marginBottom: '2rem', padding: '2rem 1.5rem' }}>
+          <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <label style={{ color: 'var(--text-secondary)', fontSize: '13px', minWidth: '120px' }}>Active Event</label>
+            <select
+              value={selectedEventId}
+              onChange={(e) => setSelectedEventId(e.target.value)}
+              style={{ flex: 1, padding: '8px 10px', borderRadius: '6px', background: 'var(--bg-tertiary)', color: '#fff', border: '1px solid var(--glass-border)' }}
+            >
+              <option value="">-- Select event (optional) --</option>
+              {events.map((ev) => (
+                <option key={ev._id} value={ev._id}>{ev.title}</option>
+              ))}
+            </select>
+          </div>
           {/* Tab selection */}
           <div style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
             <button
@@ -693,7 +733,7 @@ const GatekeeperDashboard = () => {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                       <div>Event: <strong>{result.ticketDetails.eventName}</strong></div>
                       <div>Category: <strong>{result.ticketDetails.categoryName}</strong></div>
-                      <div>Attendee: <strong>{result.ticketDetails.buyerName}</strong></div>
+                      <div>Attendee: <strong>{result.ticketDetails.attendeeName || result.ticketDetails.buyerName}</strong></div>
                       <div>Serial: <strong>{result.ticketDetails.ticketNumber}</strong></div>
                       {!result.ticketDetails.buyerPhoto && (
                         <div style={{ gridColumn: '1 / -1', color: 'var(--accent-yellow)', fontSize: '12px' }}>
@@ -733,6 +773,7 @@ const GatekeeperDashboard = () => {
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-secondary)' }}>
                   <th style={{ padding: '8px 4px' }}>Ticket</th>
                   <th style={{ padding: '8px 4px' }}>Attendee</th>
+                  <th style={{ padding: '8px 4px' }}>Status</th>
                   <th style={{ padding: '8px 4px', textAlign: 'right' }}>Scanned Time</th>
                 </tr>
               </thead>
@@ -752,6 +793,7 @@ const GatekeeperDashboard = () => {
                           <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-muted)' }}>{log.event?.title}</span>
                         </td>
                         <td style={{ padding: '10px 4px', color: 'var(--text-main)' }}>{log.buyer?.name}</td>
+                        <td style={{ padding: '10px 4px', color: log.status === 'APPROVED' ? 'var(--accent-green)' : 'var(--accent-red)', fontWeight: 700 }}>{log.status}</td>
                         <td style={{ padding: '10px 4px', textAlign: 'right', color: 'var(--text-secondary)' }}>{scanTime}</td>
                       </tr>
                     );
@@ -768,6 +810,7 @@ const GatekeeperDashboard = () => {
           </div>
         )}
       </div>
+
 
       <style>{`
         @keyframes popIn {

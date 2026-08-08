@@ -32,11 +32,13 @@ const Profile = () => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setPhotoPreview(URL.createObjectURL(file));
     setPhotoUploading(true);
 
     try {
-      await uploadProfilePhoto(file);
+      const uploaded = await uploadProfilePhoto(file);
+      if (uploaded) {
+        setPhotoPreview(URL.createObjectURL(file));
+      }
     } finally {
       setPhotoUploading(false);
       e.target.value = '';
@@ -113,7 +115,7 @@ const Profile = () => {
               justifyContent: 'center'
             }}>
               {photoPreview ? (
-                <img src={photoPreview} alt="Profile preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src={photoPreview.startsWith('blob:') ? photoPreview : `http://localhost:5001${photoPreview}`} alt="Profile preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
                 <User size={30} style={{ color: 'var(--text-muted)' }} />
               )}

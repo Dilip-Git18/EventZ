@@ -45,7 +45,9 @@ export const AuthProvider = ({ children }) => {
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.message || 'API request failed');
+        const apiErr = new Error(data.message || 'API request failed');
+        Object.assign(apiErr, data);
+        throw apiErr;
       }
 
       return data;
