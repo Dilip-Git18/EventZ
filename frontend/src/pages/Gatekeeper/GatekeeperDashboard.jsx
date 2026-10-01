@@ -881,7 +881,7 @@ const GatekeeperDashboard = () => {
                   color: '#fff',
                   marginBottom: '0.5rem'
                 }}>
-                  {result.success ? 'ACCESS APPROVED!' : result.duplicate ? 'DUPLICATE SCAN DETECTED!' : 'ENTRY REJECTED!'}
+                  {result.success ? 'SUCCESSFUL ENTRY' : result.duplicate ? 'ALREADY SCANNED' : 'ERROR — ENTRY REJECTED'}
                 </h3>
                 
                 <p style={{
