@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Loader from '../../components/Common/Loader';
-import { ScanQrCode, Clipboard, FileUp, CheckCircle2, AlertTriangle, XCircle, History, Link2, Unplug } from 'lucide-react';
+import { ScanQrCode, Clipboard, FileUp, CheckCircle2, AlertTriangle, XCircle, History, Link2, Unplug, Eye } from 'lucide-react';
 import jsQR from 'jsqr';
 
 const GatekeeperDashboard = () => {
@@ -17,6 +17,9 @@ const GatekeeperDashboard = () => {
   const [bridgeLink, setBridgeLink] = useState('');
   const [bridgeStatus, setBridgeStatus] = useState('idle');
   const bridgeSocketRef = useRef(null);
+  const previewSocketRef = useRef(null);
+  const previewPeerRef = useRef(null);
+  const previewVideoRef = useRef(null);
   const bridgeEventIdsRef = useRef(new Set());
 
   const videoRef = useRef(null);
@@ -63,12 +66,62 @@ const GatekeeperDashboard = () => {
 
   useEffect(() => () => {
     bridgeSocketRef.current?.close();
+    previewSocketRef.current?.close();
+    previewPeerRef.current?.close();
   }, []);
 
   const disconnectMobileBridge = () => {
     bridgeSocketRef.current?.close();
     bridgeSocketRef.current = null;
+    previewSocketRef.current?.close();
+    previewSocketRef.current = null;
+    previewPeerRef.current?.close();
+    previewPeerRef.current = null;
+    if (previewVideoRef.current) previewVideoRef.current.srcObject = null;
+    setPreviewStatus('idle');
     setBridgeStatus('idle');
+  };
+
+  const [previewStatus, setPreviewStatus] = useState('idle');
+  const openCameraPreview = () => {
+    try {
+      const parsed = new URL(bridgeLink.trim());
+      const sessionId = parsed.searchParams.get('session');
+      const token = parsed.searchParams.get('token');
+      if (!sessionId || !token) throw new Error('Connect a Mobile Cam session first.');
+      const protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+      const socket = new WebSocket(`${protocol}//${parsed.host}/ws?sessionId=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}&role=preview`);
+      previewSocketRef.current = socket;
+      setPreviewStatus('connecting');
+      socket.onopen = () => setPreviewStatus('waiting');
+      socket.onmessage = async ({ data }) => {
+        const message = JSON.parse(data);
+        if (message.type === 'offer') {
+          const peer = new RTCPeerConnection();
+          previewPeerRef.current = peer;
+          peer.ontrack = ({ streams }) => {
+            if (previewVideoRef.current) previewVideoRef.current.srcObject = streams[0];
+            setPreviewStatus('live');
+          };
+          peer.onicecandidate = ({ candidate }) => {
+            if (candidate && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ice-candidate', data: candidate }));
+          };
+          await peer.setRemoteDescription(message.data);
+          const answer = await peer.createAnswer();
+          await peer.setLocalDescription(answer);
+          socket.send(JSON.stringify({ type: 'answer', data: peer.localDescription }));
+        } else if (message.type === 'ice-candidate' && previewPeerRef.current) {
+          await previewPeerRef.current.addIceCandidate(new RTCIceCandidate(message.data));
+        } else if (message.type === 'session-expired') {
+          setPreviewStatus('expired');
+        }
+      };
+      socket.onerror = () => setPreviewStatus('error');
+      socket.onclose = () => { if (previewSocketRef.current === socket) setPreviewStatus('idle'); };
+    } catch (error) {
+      setPreviewStatus('error');
+      showToast(error.message || 'Could not open camera preview.', 'error');
+    }
   };
 
   const connectMobileBridge = () => {
@@ -576,10 +629,26 @@ const GatekeeperDashboard = () => {
                 {bridgeStatus === 'connected' ? <Unplug size={14} /> : <Link2 size={14} />}
                 <span>{bridgeStatus === 'connected' ? 'Disconnect' : 'Connect bridge'}</span>
               </button>
+              <button type="button" className="btn btn-secondary" onClick={previewStatus === 'idle' ? openCameraPreview : () => {
+                previewSocketRef.current?.close();
+                previewPeerRef.current?.close();
+                setPreviewStatus('idle');
+              }} disabled={bridgeStatus !== 'connected'}>
+                <Eye size={14} />
+                <span>{previewStatus === 'live' ? 'Close preview' : 'Preview camera'}</span>
+              </button>
             </div>
             <div style={{ color: bridgeStatus === 'connected' ? '#34d399' : 'var(--text-secondary)', fontSize: '11px', marginTop: '8px' }}>
               {bridgeStatus === 'connected' ? 'Connected — incoming mobile scans will validate automatically.' : bridgeStatus === 'connecting' ? 'Connecting to Mobile Cam Bridge...' : bridgeStatus === 'expired' ? 'Session ended. Create a new viewer link.' : bridgeStatus === 'error' ? 'Bridge connection failed. Check the viewer link.' : 'Not connected'}
             </div>
+            {previewStatus !== 'idle' && (
+              <div style={{ marginTop: '12px' }}>
+                <video ref={previewVideoRef} autoPlay playsInline muted style={{ width: '100%', maxHeight: '260px', borderRadius: '8px', background: '#050509' }} />
+                <div style={{ color: 'var(--text-secondary)', fontSize: '11px', marginTop: '5px' }}>
+                  {previewStatus === 'live' ? 'Live mobile camera preview.' : previewStatus === 'waiting' || previewStatus === 'connecting' ? 'Waiting for the phone camera…' : previewStatus === 'expired' ? 'Mobile camera session ended.' : 'Camera preview unavailable.'}
+                </div>
+              </div>
+            )}
           </div>
           {/* Tab selection */}
           <div style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
