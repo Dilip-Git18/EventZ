@@ -201,6 +201,14 @@ const GatekeeperDashboard = () => {
       });
 
       if (data.success) {
+        if (bridgeSocketRef.current?.readyState === WebSocket.OPEN) {
+          bridgeSocketRef.current.send(JSON.stringify({
+            type: 'validation-result',
+            status: 'success',
+            message: data.message,
+            ticketDetails: data.ticketDetails
+          }));
+        }
         setBridgeScanStatus('success');
         setResult({
           success: true,
@@ -214,6 +222,9 @@ const GatekeeperDashboard = () => {
     } catch (err) {
       // Check if duplicate scan error or event mismatch
       if (err.message && err.message.includes('DUPLICATE')) {
+        if (bridgeSocketRef.current?.readyState === WebSocket.OPEN) {
+          bridgeSocketRef.current.send(JSON.stringify({ type: 'validation-result', status: 'error', duplicate: true, message: err.message }));
+        }
         setBridgeScanStatus('error');
         // Find if they returned detailed duplicate metadata
         // Since we return 400, our fetch wrapper catches the exception message.
@@ -224,6 +235,9 @@ const GatekeeperDashboard = () => {
           message: err.message
         });
       } else if (err.scannedTicket) {
+        if (bridgeSocketRef.current?.readyState === WebSocket.OPEN) {
+          bridgeSocketRef.current.send(JSON.stringify({ type: 'validation-result', status: 'error', message: err.message || 'Event mismatch', ticketDetails: err.scannedTicket }));
+        }
         setBridgeScanStatus('error');
         // event mismatch details returned from server
         setResult({
@@ -237,6 +251,9 @@ const GatekeeperDashboard = () => {
           }
         });
       } else {
+        if (bridgeSocketRef.current?.readyState === WebSocket.OPEN) {
+          bridgeSocketRef.current.send(JSON.stringify({ type: 'validation-result', status: 'error', message: err.message || 'Validation failed. Ticket is invalid.' }));
+        }
         setBridgeScanStatus('error');
         setResult({
           success: false,
