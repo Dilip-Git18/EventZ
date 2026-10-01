@@ -16,6 +16,8 @@ const GatekeeperDashboard = () => {
   const [cameraError, setCameraError] = useState('');
   const [bridgeLink, setBridgeLink] = useState('');
   const [bridgeStatus, setBridgeStatus] = useState('idle');
+  const [mobileStatus, setMobileStatus] = useState('waiting');
+  const [bridgeScanStatus, setBridgeScanStatus] = useState(null);
   const bridgeSocketRef = useRef(null);
   const previewSocketRef = useRef(null);
   const previewPeerRef = useRef(null);
@@ -154,9 +156,12 @@ const GatekeeperDashboard = () => {
         const message = JSON.parse(data);
         if (message.type === 'ready') {
           setBridgeStatus('connected');
+        } else if (message.type === 'bridge-status') {
+          setMobileStatus(message.status === 'mobile-connected' ? 'connected' : 'disconnected');
         } else if (message.type === 'event' && message.event?.type === 'scan') {
           if (bridgeEventIdsRef.current.has(message.event.id)) return;
           bridgeEventIdsRef.current.add(message.event.id);
+          setBridgeScanStatus('scanned');
           validatePayload(message.event.value);
         } else if (message.type === 'session-expired') {
           setBridgeStatus('expired');
@@ -196,6 +201,7 @@ const GatekeeperDashboard = () => {
       });
 
       if (data.success) {
+        setBridgeScanStatus('success');
         setResult({
           success: true,
           message: data.message,
@@ -208,6 +214,7 @@ const GatekeeperDashboard = () => {
     } catch (err) {
       // Check if duplicate scan error or event mismatch
       if (err.message && err.message.includes('DUPLICATE')) {
+        setBridgeScanStatus('error');
         // Find if they returned detailed duplicate metadata
         // Since we return 400, our fetch wrapper catches the exception message.
         // Let's decode or handle duplicate checks
@@ -217,6 +224,7 @@ const GatekeeperDashboard = () => {
           message: err.message
         });
       } else if (err.scannedTicket) {
+        setBridgeScanStatus('error');
         // event mismatch details returned from server
         setResult({
           success: false,
@@ -229,6 +237,7 @@ const GatekeeperDashboard = () => {
           }
         });
       } else {
+        setBridgeScanStatus('error');
         setResult({
           success: false,
           duplicate: false,
@@ -641,6 +650,24 @@ const GatekeeperDashboard = () => {
             <div style={{ color: bridgeStatus === 'connected' ? '#34d399' : 'var(--text-secondary)', fontSize: '11px', marginTop: '8px' }}>
               {bridgeStatus === 'connected' ? 'Connected — incoming mobile scans will validate automatically.' : bridgeStatus === 'connecting' ? 'Connecting to Mobile Cam Bridge...' : bridgeStatus === 'expired' ? 'Session ended. Create a new viewer link.' : bridgeStatus === 'error' ? 'Bridge connection failed. Check the viewer link.' : 'Not connected'}
             </div>
+            {bridgeStatus === 'connected' && (
+              <div style={{ color: mobileStatus === 'connected' ? '#34d399' : '#fbbf24', fontSize: '11px', marginTop: '5px' }}>
+                {mobileStatus === 'connected' ? 'Mobile device connected and camera session is active.' : mobileStatus === 'disconnected' ? 'Mobile device disconnected.' : 'Waiting for the mobile device to open the session link.'}
+              </div>
+            )}
+            {bridgeScanStatus && (
+              <div style={{
+                marginTop: '9px',
+                padding: '8px 10px',
+                borderRadius: '7px',
+                color: bridgeScanStatus === 'success' ? '#34d399' : bridgeScanStatus === 'error' ? '#f87171' : '#fbbf24',
+                background: bridgeScanStatus === 'success' ? 'rgba(16,185,129,.1)' : bridgeScanStatus === 'error' ? 'rgba(239,68,68,.1)' : 'rgba(245,158,11,.1)',
+                fontSize: '12px',
+                fontWeight: 700
+              }}>
+                {bridgeScanStatus === 'scanned' ? 'Ticket scanned — validating with EventZ…' : bridgeScanStatus === 'success' ? 'Successful entry — ticket approved.' : 'Error — ticket rejected by EventZ.'}
+              </div>
+            )}
             {previewStatus !== 'idle' && (
               <div style={{ marginTop: '12px' }}>
                 <video ref={previewVideoRef} autoPlay playsInline muted style={{ width: '100%', maxHeight: '260px', borderRadius: '8px', background: '#050509' }} />
