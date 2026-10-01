@@ -116,7 +116,6 @@ const Register = () => {
               <option value="buyer">Event Ticket Buyer</option>
               <option value="organizer">Event Organizer / Company</option>
               <option value="gatekeeper">Venue Gatekeeper</option>
-              <option value="admin">System Administrator</option>
             </select>
           </div>
 
