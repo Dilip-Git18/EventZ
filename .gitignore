@@ -32,3 +32,6 @@ logs/
 .idea/
 .gemini/
 .agents/
+
+# Local-only testing credentials
+README.TESTING.md

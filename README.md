@@ -196,13 +196,29 @@ Install the following:
 * MongoDB Community Edition
 * Redis
 
+On macOS with Homebrew, install and start the local services with:
+
+```bash
+brew install mongodb-community redis
+brew services start mongodb-community
+brew services start redis
+```
+
+Verify Redis is available before starting the backend:
+
+```bash
+redis-cli -h 127.0.0.1 -p 6379 ping
+```
+
+The expected response is `PONG`.
+
 ### Default Local Services
 
 | Service  | Address                 |
 | -------- | ----------------------- |
 | Frontend | `http://localhost:5173` |
-| Backend  | `http://localhost:5000` |
-| MongoDB  | `localhost:5001`        |
+| Backend  | `http://localhost:5001` |
+| MongoDB  | `localhost:27017`       |
 | Redis    | `localhost:6379`        |
 
 Make sure MongoDB and Redis are running locally before starting the application.
@@ -218,7 +234,7 @@ npm start
 Backend:
 
 ```text
-http://localhost:5000
+http://localhost:5001
 ```
 
 ## Frontend Setup
