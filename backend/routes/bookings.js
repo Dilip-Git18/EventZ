@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'crypto';
 import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
@@ -18,6 +19,10 @@ const reserveSchema = z.object({
 });
 
 const attendeeNamesSchema = z.array(z.string().min(2, 'Attendee name must be at least 2 characters')).optional();
+const scanCode = () => {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from(crypto.randomBytes(8), (byte) => alphabet[byte % alphabet.length]).join('');
+};
 
 const paySchema = z.object({
   paymentDetails: z.object({
@@ -172,6 +177,8 @@ router.post('/:id/pay', protect, authorizeRole('buyer'), async (req, res, next) 
     for (let i = 0; i < booking.quantity; i++) {
       const ticketId = new mongoose.Types.ObjectId();
       const ticketNumber = `EZ-${crypto.randomUUID().substring(0, 4).toUpperCase()}-${crypto.randomUUID().substring(0, 4).toUpperCase()}`;
+      const attendeeName = attendeeNames[i] || req.user.name;
+      const ticketScanCode = scanCode();
 
       // Sign JWT payload for the QR code
       const qrCodeData = jwt.sign(
@@ -180,6 +187,9 @@ router.post('/:id/pay', protect, authorizeRole('buyer'), async (req, res, next) 
           bookingId: booking._id.toString(),
           eventId: booking.event.toString(),
           buyerId: req.user._id.toString(),
+          ticketNumber,
+          attendeeName,
+          scanCode: ticketScanCode,
           iat: Math.floor(Date.now() / 1000)
         },
         process.env.JWT_SECRET
@@ -191,8 +201,9 @@ router.post('/:id/pay', protect, authorizeRole('buyer'), async (req, res, next) 
         event: booking.event,
         category: booking.category,
         buyer: req.user._id,
-        attendeeName: attendeeNames[i] || req.user.name,
+        attendeeName,
         ticketNumber,
+        scanCode: ticketScanCode,
         status: 'BOOKED',
         qrCodeData
       });

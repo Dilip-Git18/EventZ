@@ -31,6 +31,13 @@ const ticketSchema = new mongoose.Schema(
       required: true,
       unique: true
     },
+    scanCode: {
+      type: String,
+      required: true,
+      unique: true,
+      minlength: 8,
+      maxlength: 8
+    },
     status: {
       type: String,
       enum: ['BOOKED', 'USED'],
