@@ -14,7 +14,7 @@ const GatekeeperDashboard = () => {
   const [decodingFile, setDecodingFile] = useState(false);
   const [cameraStatus, setCameraStatus] = useState('idle');
   const [cameraError, setCameraError] = useState('');
-  const [bridgeLink, setBridgeLink] = useState('');
+  const [bridgeLink, setBridgeLink] = useState(() => localStorage.getItem('eventz.mobileCamBridgeLink') || '');
   const [bridgeStatus, setBridgeStatus] = useState('idle');
   const [mobileStatus, setMobileStatus] = useState('waiting');
   const [bridgeScanStatus, setBridgeScanStatus] = useState(null);
@@ -150,6 +150,7 @@ const GatekeeperDashboard = () => {
       const socketUrl = `${socketProtocol}//${parsed.host}/ws?sessionId=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}&role=viewer`;
       const socket = new WebSocket(socketUrl);
       bridgeSocketRef.current = socket;
+      localStorage.setItem('eventz.mobileCamBridgeLink', bridgeLink.trim());
       setBridgeStatus('connecting');
       socket.onopen = () => setBridgeStatus('connected');
       socket.onmessage = ({ data }) => {
@@ -162,7 +163,7 @@ const GatekeeperDashboard = () => {
           if (bridgeEventIdsRef.current.has(message.event.id)) return;
           bridgeEventIdsRef.current.add(message.event.id);
           setBridgeScanStatus('scanned');
-          validatePayload(message.event.value);
+          validatePayload(message.event.value, message.event.scanId);
         } else if (message.type === 'session-expired') {
           setBridgeStatus('expired');
           showToast('Mobile camera session has ended.', 'error');
@@ -171,6 +172,7 @@ const GatekeeperDashboard = () => {
           showToast(message.error || 'Mobile camera bridge error', 'error');
         }
       };
+
       socket.onerror = () => {
         setBridgeStatus('error');
         showToast('Could not connect to the Mobile Cam Bridge viewer link.', 'error');
@@ -187,7 +189,19 @@ const GatekeeperDashboard = () => {
     }
   };
 
-  const validatePayload = async (payload) => {
+  const removeMobileBridge = () => {
+    disconnectMobileBridge();
+    setBridgeLink('');
+    setBridgeScanStatus(null);
+    setMobileStatus('waiting');
+    localStorage.removeItem('eventz.mobileCamBridgeLink');
+  };
+
+  useEffect(() => {
+    if (bridgeLink.trim()) connectMobileBridge();
+  }, []);
+
+  const validatePayload = async (payload, scanId = null) => {
     const ticketPayload = String(payload || '').trim();
     if (!ticketPayload) return;
 
@@ -195,15 +209,22 @@ const GatekeeperDashboard = () => {
     setResult(null);
 
     try {
+      const normalizedReference = ticketPayload.replace(/^ticket\s*[:#-]?\s*/i, '').trim();
+      const requestBody = normalizedReference.split('.').length === 3
+        ? { qrCodeData: normalizedReference, eventId: selectedEventId || undefined }
+        : (/^EZ-[A-Z0-9]+-[A-Z0-9]+$/i.test(normalizedReference)
+          ? { ticketNumber: normalizedReference.toUpperCase(), eventId: selectedEventId || undefined }
+          : { scanCode: normalizedReference.toUpperCase(), eventId: selectedEventId || undefined });
       const data = await apiFetch('/gatekeeper/validate-ticket', {
         method: 'POST',
-        body: JSON.stringify({ qrCodeData: ticketPayload, eventId: selectedEventId || undefined })
+        body: JSON.stringify(requestBody)
       });
 
       if (data.success) {
         if (bridgeSocketRef.current?.readyState === WebSocket.OPEN) {
           bridgeSocketRef.current.send(JSON.stringify({
             type: 'validation-result',
+            scanId,
             status: 'success',
             message: data.message,
             ticketDetails: data.ticketDetails
@@ -223,7 +244,7 @@ const GatekeeperDashboard = () => {
       // Check if duplicate scan error or event mismatch
       if (err.message && err.message.includes('DUPLICATE')) {
         if (bridgeSocketRef.current?.readyState === WebSocket.OPEN) {
-          bridgeSocketRef.current.send(JSON.stringify({ type: 'validation-result', status: 'error', duplicate: true, message: err.message }));
+          bridgeSocketRef.current.send(JSON.stringify({ type: 'validation-result', scanId, status: 'error', duplicate: true, message: err.message }));
         }
         setBridgeScanStatus('error');
         // Find if they returned detailed duplicate metadata
@@ -236,7 +257,7 @@ const GatekeeperDashboard = () => {
         });
       } else if (err.scannedTicket) {
         if (bridgeSocketRef.current?.readyState === WebSocket.OPEN) {
-          bridgeSocketRef.current.send(JSON.stringify({ type: 'validation-result', status: 'error', message: err.message || 'Event mismatch', ticketDetails: err.scannedTicket }));
+          bridgeSocketRef.current.send(JSON.stringify({ type: 'validation-result', scanId, status: 'error', message: err.message || 'Event mismatch', ticketDetails: err.scannedTicket }));
         }
         setBridgeScanStatus('error');
         // event mismatch details returned from server
@@ -252,7 +273,7 @@ const GatekeeperDashboard = () => {
         });
       } else {
         if (bridgeSocketRef.current?.readyState === WebSocket.OPEN) {
-          bridgeSocketRef.current.send(JSON.stringify({ type: 'validation-result', status: 'error', message: err.message || 'Validation failed. Ticket is invalid.' }));
+          bridgeSocketRef.current.send(JSON.stringify({ type: 'validation-result', scanId, status: 'error', message: err.message || 'Validation failed. Ticket is invalid.' }));
         }
         setBridgeScanStatus('error');
         setResult({
@@ -654,6 +675,15 @@ const GatekeeperDashboard = () => {
               >
                 {bridgeStatus === 'connected' ? <Unplug size={14} /> : <Link2 size={14} />}
                 <span>{bridgeStatus === 'connected' ? 'Disconnect' : 'Connect bridge'}</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={removeMobileBridge}
+                disabled={!bridgeLink.trim() && bridgeStatus !== 'connected'}
+              >
+                <XCircle size={14} />
+                <span>Remove link</span>
               </button>
               <button type="button" className="btn btn-secondary" onClick={previewStatus === 'idle' ? openCameraPreview : () => {
                 previewSocketRef.current?.close();

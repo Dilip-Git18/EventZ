@@ -13,7 +13,14 @@ const router = express.Router();
 // @access  Private (Gatekeeper / Admin)
 router.post('/validate-ticket', protect, authorizeRole('gatekeeper', 'admin'), async (req, res, next) => {
   try {
-    const { qrCodeData, eventId } = req.body;
+    let { qrCodeData, eventId, ticketNumber, scanCode } = req.body;
+    if (!qrCodeData && (ticketNumber || scanCode)) {
+      const lookup = ticketNumber
+        ? { ticketNumber: String(ticketNumber).trim() }
+        : { scanCode: String(scanCode).trim().toUpperCase() };
+      const ticketByReference = await Ticket.findOne(lookup).select('qrCodeData');
+      if (ticketByReference) qrCodeData = ticketByReference.qrCodeData;
+    }
     if (!qrCodeData) {
       await ScanLog.create({
         gatekeeper: req.user._id,
