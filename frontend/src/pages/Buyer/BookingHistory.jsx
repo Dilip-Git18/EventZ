@@ -10,15 +10,17 @@ const BookingHistory = () => {
   const { apiFetch, showToast } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [selectedTicket, setSelectedTicket] = useState(null);
 
   const fetchBookings = async () => {
     try {
       const data = await apiFetch('/bookings/my-bookings');
       if (data.success) {
-        setBookings(data.bookings);
+        setBookings(Array.isArray(data.bookings) ? data.bookings : []);
       }
     } catch (err) {
+      setLoadError(err.message || 'Could not load your bookings.');
       showToast(err.message, 'error');
     } finally {
       setLoading(false);
@@ -50,14 +52,31 @@ const BookingHistory = () => {
         My Bookings & Tickets
       </h1>
 
-      {bookings.length > 0 ? (
+      {loadError ? (
+        <div className="glass-card" style={{ padding: '3rem 2rem', textAlign: 'center' }}>
+          <AlertTriangle size={42} style={{ color: 'var(--accent-red)', marginBottom: '1rem' }} />
+          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: '#fff', marginBottom: '0.5rem' }}>
+            Could not load bookings
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '1.5rem' }}>{loadError}</p>
+          <button type="button" className="btn btn-primary" onClick={() => { setLoadError(''); setLoading(true); fetchBookings(); }}>
+            Try again
+          </button>
+        </div>
+      ) : bookings.length > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {bookings.map((booking) => {
-            const eventDate = new Date(booking.event.startDate).toLocaleDateString('en-US', {
+            const eventDate = booking.event?.startDate
+              ? new Date(booking.event.startDate).toLocaleDateString('en-US', {
               month: 'short',
               day: 'numeric',
               year: 'numeric'
-            });
+              })
+              : 'Event details unavailable';
+            const eventTitle = booking.event?.title || 'Event unavailable';
+            const venueName = booking.event?.venueName || 'Venue unavailable';
+            const categoryName = booking.category?.name || 'Category unavailable';
+            const totalAmount = Number(booking.totalAmount);
 
             return (
               <div key={booking._id} className="glass-card" style={{ padding: '1.75rem' }}>
@@ -74,20 +93,20 @@ const BookingHistory = () => {
                 }}>
                   <div>
                     <h3 style={{ fontSize: '1.25rem', color: '#fff', fontWeight: 700, marginBottom: '4px' }}>
-                      {booking.event.title}
+                      {eventTitle}
                     </h3>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '13px' }}>
                       <Calendar size={14} />
                       <span>{eventDate}</span>
                       <span>•</span>
-                      <span>{booking.event.venueName}</span>
+                      <span>{venueName}</span>
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     {getStatusBadge(booking.status)}
                     <span style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>
-                      ₹{booking.totalAmount.toFixed(2)}
+                      ₹{Number.isFinite(totalAmount) ? totalAmount.toFixed(2) : '0.00'}
                     </span>
                   </div>
                 </div>
@@ -96,7 +115,7 @@ const BookingHistory = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                   <div>
                     <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                      Category: <strong>{booking.category.name}</strong> ({booking.quantity} tickets)
+                      Category: <strong>{categoryName}</strong> ({booking.quantity} tickets)
                     </p>
                     <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
                       Order Ref: {booking._id}
@@ -152,7 +171,7 @@ const BookingHistory = () => {
 
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <button
-                              onClick={() => setSelectedTicket({ ...t, event: booking.event, category: booking.category })}
+                              onClick={() => setSelectedTicket({ ...t, event: booking.event || {}, category: booking.category || {} })}
                               className="btn btn-secondary"
                               style={{ padding: '6px', borderRadius: '4px' }}
                               title="View Ticket"
