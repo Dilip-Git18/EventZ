@@ -61,6 +61,10 @@ const OrganizerEventStats = () => {
     () => new Set(tickets.map((ticket) => normalizeTicketNumber(ticket.ticketNumber))),
     [tickets]
   );
+  const validTicketIds = useMemo(
+    () => new Map(tickets.map((ticket) => [String(ticket._id).toLowerCase(), normalizeTicketNumber(ticket.ticketNumber)])),
+    [tickets]
+  );
 
   const handleSheetUpload = async (event) => {
     const file = event.target.files?.[0];
@@ -71,11 +75,12 @@ const OrganizerEventStats = () => {
       if (!eventId || !tickets.length) throw new Error('Select an event with issued tickets before uploading a scan sheet.');
       if (!file.name.toLowerCase().endsWith('.csv')) throw new Error('Upload the CSV scan sheet downloaded from CameraBridge.');
 
-      const parsed = parseScanReportCsv(await file.text(), eventId, validTicketNumbers);
+      const parsed = parseScanReportCsv(await file.text(), eventId, validTicketNumbers, validTicketIds);
       setScanStatuses(parsed.ticketStatuses);
       setUploadName(file.name);
       const ignored = parsed.ignoredRows + parsed.ignoredStatusRows;
-      setUploadMessage(`${parsed.ticketStatuses.size} event tickets matched.${ignored ? ` ${ignored} unsupported or unrelated rows were ignored.` : ''} Imported scan data stays in this browser and is not saved to EventZ.`);
+      const rejectedCount = [...parsed.ticketStatuses.values()].filter((status) => status === 'REJECTED').length;
+      setUploadMessage(`${parsed.ticketStatuses.size} event tickets matched, including ${rejectedCount} rejected scan${rejectedCount === 1 ? '' : 's'}.${ignored ? ` ${ignored} unsupported or unrelated rows were ignored.` : ''} Imported scan data stays in this browser and is not saved to EventZ.`);
       showToast('Scan sheet imported for this event.', 'success');
     } catch (error) {
       setScanStatuses(new Map());
@@ -136,7 +141,7 @@ const OrganizerEventStats = () => {
           </div>
         </div>
         <p style={{ gridColumn: '1 / -1', color: 'var(--text-muted)', fontSize: '12px', lineHeight: 1.5 }}>
-          Upload the Excel-compatible CSV from the CameraBridge host. Without a sheet, EventZ&apos;s already checked-in tickets count as attended and other issued tickets count as absent. Uploaded rejected rows are kept only in this page&apos;s memory.
+          Upload the Excel-compatible CSV from the CameraBridge host. Scan results in the uploaded sheet determine those tickets&apos; sections; tickets without a row use EventZ&apos;s existing check-in status. Accepted rows take precedence over rejected duplicates. Imported rejected rows are kept only in this page&apos;s memory.
         </p>
       </div>
 

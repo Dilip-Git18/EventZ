@@ -1,6 +1,6 @@
 export const normalizeTicketNumber = (value) => String(value || '').trim().toUpperCase();
 
-export function parseScanReportCsv(contents, eventId, validTicketNumbers) {
+export function parseScanReportCsv(contents, eventId, validTicketNumbers, validTicketIds = new Map()) {
   const text = String(contents || '').replace(/^\uFEFF/, '');
   const records = [];
   let record = [];
@@ -45,6 +45,7 @@ export function parseScanReportCsv(contents, eventId, validTicketNumbers) {
 
   const headers = records[0].map((header) => header.trim().toLowerCase());
   const ticketNumberIndex = headers.indexOf('ticket number');
+  const ticketIdIndex = headers.indexOf('ticket id');
   const statusIndex = headers.indexOf('status');
   const eventIdIndex = headers.indexOf('event id');
   if (ticketNumberIndex === -1 || statusIndex === -1) {
@@ -60,18 +61,21 @@ export function parseScanReportCsv(contents, eventId, validTicketNumbers) {
       throw new Error('The scan sheet contains a row with an unexpected number of columns.');
     }
 
-    const rowEventId = eventIdIndex === -1 ? '' : values[eventIdIndex].trim();
-    if (rowEventId && rowEventId !== String(eventId)) {
+    const rowEventId = eventIdIndex === -1 ? '' : values[eventIdIndex].trim().toLowerCase();
+    if (rowEventId && rowEventId !== String(eventId).toLowerCase()) {
       throw new Error('This scan sheet belongs to a different event. Select its matching event and try again.');
     }
 
-    const ticketNumber = normalizeTicketNumber(values[ticketNumberIndex]);
+    const scannedTicketNumber = normalizeTicketNumber(values[ticketNumberIndex]);
+    const ticketId = ticketIdIndex === -1 ? '' : values[ticketIdIndex].trim().toLowerCase();
+    const ticketNumber = validTicketIds.get(ticketId)
+      || (validTicketNumbers.has(scannedTicketNumber) ? scannedTicketNumber : '');
     const status = values[statusIndex].trim().toUpperCase();
-    if (!ticketNumber || !['ACCEPTED', 'REJECTED'].includes(status)) {
+    if (!['ACCEPTED', 'REJECTED'].includes(status)) {
       ignoredStatusRows += 1;
       return;
     }
-    if (!validTicketNumbers.has(ticketNumber)) {
+    if (!ticketNumber) {
       ignoredRows += 1;
       return;
     }
@@ -88,9 +92,8 @@ export function parseScanReportCsv(contents, eventId, validTicketNumbers) {
 }
 
 export function getTicketAttendanceStatus(ticket, scanStatuses) {
-  if (ticket.status === 'USED' || scanStatuses.get(normalizeTicketNumber(ticket.ticketNumber)) === 'ACCEPTED') {
-    return 'ATTENDED';
-  }
-  if (scanStatuses.get(normalizeTicketNumber(ticket.ticketNumber)) === 'REJECTED') return 'REJECTED';
+  const scanStatus = scanStatuses.get(normalizeTicketNumber(ticket.ticketNumber));
+  if (scanStatus) return scanStatus === 'ACCEPTED' ? 'ATTENDED' : 'REJECTED';
+  if (ticket.status === 'USED') return 'ATTENDED';
   return 'ABSENT';
 }
