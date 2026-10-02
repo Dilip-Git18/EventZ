@@ -157,10 +157,6 @@ const DigitalTicket = ({ ticket, onClose }) => {
                 <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 600, color: 'var(--accent-purple)' }}>
                   {ticket.ticketNumber}
                 </span>
-                <span style={{ display: 'block', marginTop: '5px', fontSize: '9px', color: 'var(--text-muted)' }}>SCAN CODE</span>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 600, color: 'var(--accent-purple)' }}>
-                  {ticket.scanCode || 'Included in signed QR'}
-                </span>
               </div>
               <button onClick={handleDownloadPdf} className="btn btn-secondary" style={{ padding: '8px 14px', fontSize: '12px' }}>
                 <Download size={14} />
