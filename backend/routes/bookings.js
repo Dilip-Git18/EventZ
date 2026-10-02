@@ -20,8 +20,7 @@ const reserveSchema = z.object({
 
 const attendeeNamesSchema = z.array(z.string().min(2, 'Attendee name must be at least 2 characters')).optional();
 const scanCode = () => {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  return Array.from(crypto.randomBytes(8), (byte) => alphabet[byte % alphabet.length]).join('');
+  return String(crypto.randomInt(0, 100000000)).padStart(8, '0');
 };
 
 const paySchema = z.object({
@@ -188,7 +187,9 @@ router.post('/:id/pay', protect, authorizeRole('buyer'), async (req, res, next) 
           eventId: booking.event.toString(),
           buyerId: req.user._id.toString(),
           ticketNumber,
+          serialNumber: ticketNumber,
           attendeeName,
+          holderName: attendeeName,
           scanCode: ticketScanCode,
           iat: Math.floor(Date.now() / 1000)
         },

@@ -8,6 +8,7 @@ const DigitalTicket = ({ ticket, onClose }) => {
   const event = ticket.event;
   const category = ticket.category;
   const buyer = ticket.buyer || { name: 'Valued Guest' };
+  const holderName = ticket.attendeeName || buyer.name || 'Valued Guest';
 
   const startDate = new Date(event.startDate);
   const dateString = startDate.toLocaleDateString('en-US', {
@@ -138,7 +139,7 @@ const DigitalTicket = ({ ticket, onClose }) => {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '13px' }}>
                   <User size={15} style={{ color: 'var(--accent-purple)' }} />
-                  <span>Holder: {buyer.name}</span>
+                  <span>Holder: {holderName}</span>
                 </div>
               </div>
             </div>
@@ -155,6 +156,10 @@ const DigitalTicket = ({ ticket, onClose }) => {
                 <span style={{ display: 'block', fontSize: '9px', color: 'var(--text-muted)' }}>SERIAL NO.</span>
                 <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 600, color: 'var(--accent-purple)' }}>
                   {ticket.ticketNumber}
+                </span>
+                <span style={{ display: 'block', marginTop: '5px', fontSize: '9px', color: 'var(--text-muted)' }}>SCAN CODE</span>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 600, color: 'var(--accent-purple)' }}>
+                  {ticket.scanCode || 'Included in signed QR'}
                 </span>
               </div>
               <button onClick={handleDownloadPdf} className="btn btn-secondary" style={{ padding: '8px 14px', fontSize: '12px' }}>

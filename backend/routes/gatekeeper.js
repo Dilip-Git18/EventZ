@@ -73,6 +73,23 @@ router.post('/validate-ticket', protect, authorizeRole('gatekeeper', 'admin'), a
       return res.status(404).json({ success: false, message: 'Ticket record not found in system database' });
     }
 
+    const ticketClaimsMatch = (!decoded.ticketNumber || decoded.ticketNumber === ticket.ticketNumber)
+      && (!decoded.serialNumber || decoded.serialNumber === ticket.ticketNumber)
+      && (!decoded.scanCode || decoded.scanCode === ticket.scanCode)
+      && (!decoded.attendeeName || decoded.attendeeName === (ticket.attendeeName || ticket.buyer.name));
+    if (!ticketClaimsMatch) {
+      await ScanLog.create({
+        gatekeeper: req.user._id,
+        ticket: ticket._id,
+        event: eventId || ticket.event._id,
+        buyer: ticket.buyer._id,
+        ticketNumber: ticket.ticketNumber,
+        status: 'REJECTED',
+        reason: 'QR ticket metadata does not match the system record'
+      });
+      return res.status(400).json({ success: false, message: 'Invalid or tampered QR ticket metadata' });
+    }
+
 
     if (eventId && ticket.event._id.toString() !== eventId.toString()) {
       const message = 'This is not this event ticket.';
