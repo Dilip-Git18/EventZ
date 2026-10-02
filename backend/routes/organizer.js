@@ -4,6 +4,7 @@ import Event from '../models/Event.js';
 import Booking from '../models/Booking.js';
 import TicketCategory from '../models/TicketCategory.js';
 import Ticket from '../models/Ticket.js';
+import RejectedScanReport from '../models/RejectedScanReport.js';
 import { protect, authorizeRole } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -207,26 +208,106 @@ router.get('/events/:eventId/tickets', protect, authorizeRole('organizer'), asyn
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
-    const tickets = await Ticket.find({ event: event._id })
-      .select('ticketNumber attendeeName category buyer status scannedAt scannedBy')
-      .populate('category', 'name')
-      .populate('buyer', 'name')
-      .populate('scannedBy', 'name')
-      .sort({ ticketNumber: 1 })
-      .lean();
+    const [tickets, rejectedScanReport] = await Promise.all([
+      Ticket.find({ event: event._id })
+        .select('ticketNumber attendeeName category buyer status scannedAt scannedBy')
+        .populate('category', 'name')
+        .populate('buyer', 'name email profilePhoto')
+        .populate('scannedBy', 'name')
+        .sort({ ticketNumber: 1 })
+        .lean(),
+      RejectedScanReport.findOne({ event: event._id })
+        .select('rejectedTickets importedAt')
+        .lean()
+    ]);
 
     res.status(200).json({
       success: true,
       event: { _id: event._id, title: event.title },
+      rejectedScanReport: rejectedScanReport
+        ? {
+            rejectedTickets: rejectedScanReport.rejectedTickets,
+            importedAt: rejectedScanReport.importedAt
+          }
+        : null,
       tickets: tickets.map((ticket) => ({
         _id: ticket._id,
         ticketNumber: ticket.ticketNumber,
         attendeeName: ticket.attendeeName || ticket.buyer?.name || 'Unknown attendee',
+        buyerName: ticket.buyer?.name || 'Unknown buyer',
+        buyerEmail: ticket.buyer?.email || '',
+        buyerPhoto: ticket.buyer?.profilePhoto || '',
         categoryName: ticket.category?.name || 'Uncategorized',
         status: ticket.status,
         scannedAt: ticket.scannedAt || null,
         scannedByName: ticket.scannedBy?.name || ''
       }))
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// @desc    Save the latest rejected scan ticket counts for an organizer-owned event
+// @route   PUT /api/organizer/events/:eventId/rejected-scans
+// @access  Private (Organizer)
+router.put('/events/:eventId/rejected-scans', protect, authorizeRole('organizer'), async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.eventId)) {
+      return res.status(400).json({ success: false, message: 'Invalid event ID' });
+    }
+
+    const event = await Event.findOne({ _id: req.params.eventId, organizer: req.user._id })
+      .select('_id')
+      .lean();
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+
+    const input = req.body?.rejectedTickets;
+    if (!Array.isArray(input) || input.length > 1000) {
+      return res.status(400).json({ success: false, message: 'Rejected tickets must be an array of up to 1,000 entries' });
+    }
+
+    const rejectedTickets = [];
+    const ticketNumbers = new Set();
+    for (const item of input) {
+      const ticketNumber = typeof item?.ticketNumber === 'string'
+        ? item.ticketNumber.trim().toUpperCase()
+        : '';
+      const rejectionCount = item?.rejectionCount;
+      if (
+        !ticketNumber
+        || ticketNumber.length > 100
+        || !Number.isSafeInteger(rejectionCount)
+        || rejectionCount < 1
+        || ticketNumbers.has(ticketNumber)
+      ) {
+        return res.status(400).json({ success: false, message: 'Each rejected ticket needs a unique ticket number and a positive whole-number rejection count' });
+      }
+      ticketNumbers.add(ticketNumber);
+      rejectedTickets.push({ ticketNumber, rejectionCount });
+    }
+
+    const importedAt = new Date();
+    const report = await RejectedScanReport.findOneAndUpdate(
+      { event: event._id },
+      {
+        $set: {
+          uploadedBy: req.user._id,
+          rejectedTickets,
+          importedAt
+        }
+      },
+      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+    ).select('rejectedTickets importedAt');
+
+    res.status(200).json({
+      success: true,
+      rejectedScanReport: {
+        rejectedTickets: report.rejectedTickets,
+        importedAt: report.importedAt
+      }
     });
   } catch (error) {
     next(error);

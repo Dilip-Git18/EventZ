@@ -1,276 +1,119 @@
-# EventZ - High-Concurrency Ticket Brokering Engine
+# EventZ
 
-EventZ is a full-stack ticket brokering platform designed to handle high-concurrency ticket purchases while preventing ticket overselling and unauthorized access.
+**EventZ is a full-stack event ticketing platform built by Dilip Kumar.** It brings event discovery, ticket reservations, QR-based entry, and organizer analytics together in one role-based application.
 
-The platform supports ticket buyers, event organizers, venue gatekeepers, and platform administrators through secure authentication, role-based access control, temporary ticket reservations, Redis-based distributed locking, and QR/JWT ticket validation.
+The project focuses on a reliable ticket lifecycle: buyers reserve tickets, complete checkout, and receive signed QR tickets; gatekeepers validate those tickets at entry; organizers manage events and review sales and attendance.
 
 ## Features
 
-### High-Concurrency Ticket Booking
+### For ticket buyers
 
-* Prevents multiple users from purchasing the same ticket inventory simultaneously.
-* Uses Redis distributed locking to safely manage concurrent booking requests.
-* Protects ticket inventory from race conditions and overselling.
+- Browse published events and view event details.
+- Reserve tickets while completing checkout.
+- Receive individual digital tickets with signed QR codes.
+- View booking history and ticket details.
 
-### Temporary Ticket Reservation
+### For event organizers
 
-* Selected tickets are reserved for 5 minutes during checkout.
-* Reserved inventory automatically becomes available again after the reservation expires.
-* Redis TTL is used to manage reservation expiration.
+- Create and manage events and ticket categories.
+- Review ticket sales, revenue, inventory, and attendance analytics.
+- Search issued tickets by ticket number to view the attendee, buyer contact details, and buyer profile photo when available.
+- Upload a CameraBridge scan sheet to review attended, rejected, and absent ticket activity.
+- View rejected ticket numbers and rejection counts. The latest imported rejection report is saved per event and remains available after refresh.
 
-### Role-Based Access Control
+### For venue gatekeepers
 
-EventZ supports multiple user roles with different permissions:
+- Scan QR tickets and validate them against EventZ.
+- View attendee, ticket, category, event, and buyer-photo details when available.
+- Prevent repeated entry by rejecting tickets that have already been used.
+- Review approved scan history.
+- Connect a phone camera through the standalone CameraBridge service.
 
-* Ticket Buyer - Browse events, reserve tickets, purchase tickets, and access booked tickets.
-* Event Organizer - Create and manage events and monitor ticket sales.
-* Venue Gatekeeper - Scan tickets, verify ticket holders, view attendee information, and validate entry.
-* Platform Super-Admin - Manage users, events, and platform-level operations.
+### For administrators
 
-### Secure QR Ticket Validation
+- Review platform activity and manage users, events, and bookings.
 
-* Generates a QR-based ticket after a successful booking.
-* QR tickets contain securely signed JWT tokens.
-* Gatekeepers can scan and validate tickets at the venue.
-* Prevents invalid and already-used tickets from being accepted.
+## Technology
 
-### Gatekeeper Attendee Verification
+| Area | Technologies |
+| --- | --- |
+| Frontend | React, Vite, React Router, Lucide |
+| Backend | Node.js, Express |
+| Database | MongoDB, Mongoose |
+| Reservation coordination | Redis, ioredis |
+| Authentication | JWT, HTTP-only cookies, role-based authorization |
+| Ticket entry | Signed QR/JWT payloads |
+| Mobile scanning bridge | Express, WebSocket (`ws`), browser camera APIs |
 
-When a gatekeeper scans a customer's QR ticket, EventZ provides the relevant ticket-holder information for verification.
-
-The gatekeeper can view:
-
-* Customer name
-* Customer profile image
-* Ticket ID
-* Event name
-* Ticket type
-* Booking information
-* Ticket status
-
-This allows the gatekeeper to perform an additional visual identity check by comparing the customer's profile image with the person presenting the ticket.
-
-### Revenue Insights
-
-* Provides event revenue and sales-related insights.
-* Revenue processing can be handled asynchronously to avoid adding unnecessary work to the critical booking flow.
-
-## Tech Stack
-
-### Frontend
-
-* React.js
-* Vite
-* HTML
-* CSS
-* JavaScript
-
-### Backend
-
-* Node.js
-* Express.js
-
-### Database and Infrastructure
-
-* MongoDB Community Edition
-* Redis
-
-### Security
-
-* JWT
-* Role-Based Access Control (RBAC)
-* Signed QR ticket tokens
-* Redis distributed locks
-* Resource ownership validation
-
-## System Architecture
+## Application flow
 
 ```text
-                         +----------------------+
-                         |     React + Vite     |
-                         |      Frontend        |
-                         +----------+-----------+
-                                    |
-                                    v
-                         +----------------------+
-                         |   Node.js + Express   |
-                         |       REST API       |
-                         +----------+-----------+
-                                    |
-                    +---------------+---------------+
-                    |                               |
-                    v                               v
-             +--------------+                +--------------+
-             |    MongoDB   |                |     Redis    |
-             |   Database   |                | Locks + TTL  |
-             +--------------+                +--------------+
+Buyer                    EventZ                    Gatekeeper
+  |                         |                           |
+  |-- reserve tickets ---->|                           |
+  |                         |-- coordinate inventory    |
+  |-- complete checkout -->|                           |
+  |<-- signed QR tickets --|                           |
+  |                                                     |
+  |-------------------- present ticket ---------------->|
+  |                         |<-- validate signed QR ----|
+  |                         |-- check booking/status -->|
+  |                         |-- mark valid ticket USED ->|
+  |                         |<-- attendee details ------|
 ```
 
-## Ticket Booking Flow
+Redis coordinates temporary reservations and inventory checks. MongoDB stores users, events, bookings, tickets, and application records. EventZ validates tickets and decides whether entry is accepted.
+
+## CameraBridge integration
+
+CameraBridge is a separate, standalone phone-camera scanning service included in the [`mobile-cam/`](./mobile-cam/) directory. It relays barcode scans over a short-lived session; it does not contain EventZ credentials, access the EventZ database, or decide whether a ticket is valid.
 
 ```text
-User selects tickets
-        |
-        v
-Authentication and Authorization
-        |
-        v
-Acquire Redis Distributed Lock
-        |
-        v
-Check Ticket Availability
-        |
-        v
-Reserve Tickets for 5 Minutes
-        |
-        v
-Complete Checkout
-        |
-        v
-Confirm Booking
-        |
-        v
-Generate Signed QR Ticket
-        |
-        v
-Ticket Available to Buyer
+Phone camera -> CameraBridge session -> EventZ gatekeeper browser -> EventZ validation API
 ```
 
-The Redis distributed lock ensures that concurrent requests cannot reserve the same ticket inventory simultaneously.
+1. Deploy or run CameraBridge over HTTPS when using a phone camera.
+2. Create a barcode session in CameraBridge and open its mobile link on the phone.
+3. Paste the session's read-only viewer link into **Connect Mobile Cam Bridge** on the EventZ Gatekeeper page.
+4. Scan a ticket. The gatekeeper browser forwards it to EventZ for normal validation.
+5. When scanning is complete, download the CameraBridge CSV report.
+6. In EventZ's organizer portal, open **Event Stats**, select the event, and upload the CSV.
 
-## QR Ticket and Gatekeeper Verification Flow
+The **Rejected** report shows ticket numbers marked `REJECTED` and counts the rejected rows for each number, including duplicate scan attempts. EventZ persists only the rejected ticket numbers, counts, importing organizer, and import time for the selected event; it does not store the uploaded CSV or other scan details. A later upload replaces the prior rejected report for that event. Accepted scans and EventZ's existing `USED` ticket status drive attendance; issued tickets without an accepted or used status remain absent.
 
-```text
-                    Customer QR Code
-                           |
-                           v
-                    Scan QR Ticket
-                           |
-                           v
-                 Verify Signed JWT
-                           |
-                           v
-                  Check Ticket Status
-                           |
-              +------------+------------+
-              |                         |
-              v                         v
-        Invalid / Used             Valid Ticket
-              |                         |
-              v                         v
-        Reject Entry          Retrieve Ticket Holder
-                                        |
-                         +--------------+--------------+
-                         |              |              |
-                         v              v              v
-                       Name       Profile Image    Ticket Details
-                         |              |              |
-                         +--------------+--------------+
-                                        |
-                                        v
-                              Gatekeeper Verification
-                                        |
-                              +---------+---------+
-                              |                   |
-                              v                   v
-                         Verification        Verification
-                            Failed               Passed
-                              |                   |
-                              v                   v
-                         Reject Entry        Allow Entry
-                                                  |
-                                                  v
-                                           Mark Ticket Used
-```
+For CameraBridge-specific setup and deployment instructions, see [`mobile-cam/README.md`](./mobile-cam/README.md).
 
-## Mobile Camera Scanning with CameraBridge
-
-CameraBridge is a separate, standalone service that lets a phone camera scan tickets for an EventZ gatekeeper. It does **not** need EventZ credentials, an EventZ account, or a direct connection to the EventZ database. EventZ and CameraBridge work together through a short-lived barcode session and a read-only WebSocket connection:
-
-```text
-Phone browser       CameraBridge       EventZ gatekeeper browser       EventZ backend
-     |                    |                       |                           |
-     |-- scan QR -------->|                       |                           |
-     |                    |-- scan + scan ID ---->|                           |
-     |                    |                       |-- validate with login --->|
-     |                    |                       |<-- ticket result ---------|
-     |                    |<-- result + scan ID --|                           |
-     |<-- show result ----|                       |                           |
-```
-
-The phone connects to CameraBridge using the mobile session link. The EventZ gatekeeper browser connects to the same session as a read-only viewer, receives each scan, and submits it to the normal EventZ ticket-validation API using the signed-in gatekeeper's EventZ session. EventZ remains responsible for checking the ticket, marking valid tickets as used, recording scan history, and returning attendee details. The validation response travels back through CameraBridge to the phone. The phone does not call EventZ directly.
-
-### Connect a phone scanner to EventZ
-
-1. Deploy and open the standalone CameraBridge web service over HTTPS. CameraBridge is hosted separately from EventZ; use its own service URL.
-2. In CameraBridge, select **Barcode scanning** and choose **Create session link**. The generated session is short-lived (10 minutes by default).
-3. Open the **mobile link** on the phone and allow camera access. Keep the CameraBridge session page available while scanning.
-4. Copy the **viewer link** and paste it into **Connect Mobile Cam Bridge** in the EventZ gatekeeper's **Ticket Scanner** page. Connect the link. The mobile link can also be used there, but the viewer link is the least-privileged option.
-5. Confirm EventZ shows the bridge as connected and the phone as connected, then scan a ticket. EventZ displays the validation result and attendee details in the gatekeeper page; the phone also receives the result.
-6. When finished, stop the CameraBridge session. The session and its links expire automatically; create a new session for a later scanning session.
-
-The phone must use the mobile link, not the viewer link. The viewer is read-only: it can deliver scans to EventZ and receive their validation results, but it cannot scan using a camera. CameraBridge does not validate ticket signatures or decide whether entry is allowed; only EventZ does that. If EventZ is unavailable or the gatekeeper is not signed in, the scan cannot be validated.
-
-Camera access requires HTTPS on the phone. `BarcodeDetector` is used where supported. Manual token entry is available as a fallback, but automatic camera scan forwarding requires a supported barcode scanner in the mobile browser. CameraBridge sessions are in-memory and intended for a single service instance; restarting or scaling the bridge can invalidate active sessions. Treat session links as temporary credentials and do not post or share them publicly.
-
-### Organizer Event Stats attendance report
-
-After gatekeepers finish validating tickets through CameraBridge, download the **Excel-compatible scan sheet** from the CameraBridge host page. In EventZ, open **Event Stats** in the organizer sidebar, select the matching event, and upload that `.csv` file. EventZ compares ticket numbers from the sheet against that event's issued ticket holders and groups results into attended, rejected, and absent, showing each holder, ticket category, and ticket number. Multiple tickets for the same holder and category are grouped together.
-
-The report does not save uploaded scan sheets or rejected scan rows to EventZ. Imported rows are held in the organizer page's memory only and are cleared when the page is refreshed or the event is changed. Uploaded results determine the status for tickets present in the sheet; accepted rows take precedence over rejected duplicate attempts for the same ticket. Tickets without a matching row use EventZ's existing `USED` status to determine attendance. The import matches by ticket ID first and ticket number as a fallback.
-
-### Connection status and troubleshooting
-
-| EventZ status | What it means |
-| ------------- | ------------- |
-| Bridge connected | The EventZ browser has an active WebSocket connection to the CameraBridge session. |
-| Mobile connected | A phone browser has joined that session. |
-| Both connected | Scans can be relayed to EventZ for validation. |
-| Session ended or expired | Create a new barcode session in CameraBridge and replace the saved link in EventZ. |
-
-If EventZ says the bridge is disconnected, check that the viewer link belongs to an active barcode session and that the browser can reach the CameraBridge service. If the bridge is connected but the mobile device is not, open the mobile link on the phone and grant camera permission. If a scan arrives but cannot be validated, check that the EventZ backend is running and that the gatekeeper is logged in; CameraBridge cannot replace EventZ validation.
-
-## Local Development
-
-EventZ is designed to run completely on localhost without requiring cloud services.
+## Run locally
 
 ### Prerequisites
 
-Install the following:
+- Node.js and npm
+- MongoDB
+- Redis
 
-* Node.js
-* npm
-* MongoDB Community Edition
-* Redis
-
-On macOS with Homebrew, install and start the local services with:
+Start MongoDB and Redis using your operating system's preferred service manager. With Homebrew on macOS:
 
 ```bash
-brew install mongodb-community redis
 brew services start mongodb-community
 brew services start redis
 ```
 
-Verify Redis is available before starting the backend:
+### Configure the backend
 
-```bash
-redis-cli -h 127.0.0.1 -p 6379 ping
+Create `backend/.env` for local development:
+
+```env
+NODE_ENV=development
+PORT=5001
+MONGO_URI=mongodb://127.0.0.1:27017/eventz
+REDIS_URI=redis://127.0.0.1:6379
+JWT_SECRET=replace-with-a-long-random-local-secret
+JWT_EXPIRE=24h
 ```
 
-The expected response is `PONG`.
+Keep `.env` files and real credentials out of version control. For production, use strong secrets and the connection strings for your managed MongoDB and Redis services.
 
-### Default Local Services
-
-| Service  | Address                 |
-| -------- | ----------------------- |
-| Frontend | `http://localhost:5173` |
-| Backend  | `http://localhost:5001` |
-| MongoDB  | `localhost:27017`       |
-| Redis    | `localhost:6379`        |
-
-Make sure MongoDB and Redis are running locally before starting the application.
-
-## Backend Setup
+Install dependencies and start the backend:
 
 ```bash
 cd backend
@@ -278,21 +121,17 @@ npm install
 npm start
 ```
 
-Backend:
+The API listens on `http://localhost:5001`. Its status endpoint is `http://localhost:5001/api/status`.
 
-```text
-http://localhost:5001
-```
+### Configure and start the frontend
 
-## Frontend Setup
-
-Create `frontend/.env` and set the backend API URL:
+Create `frontend/.env`:
 
 ```env
 VITE_API_BASE_URL=http://localhost:5001/api
 ```
 
-For a deployed frontend, set `VITE_API_BASE_URL` to the deployed EventZ backend URL ending in `/api`, then rebuild/redeploy the frontend. Profile photos are served by the backend at `/uploads/...`, so gatekeeper images use this same backend origin.
+Then install dependencies and start Vite:
 
 ```bash
 cd frontend
@@ -300,124 +139,53 @@ npm install
 npm run dev
 ```
 
-Frontend:
+Open `http://localhost:5173`.
 
-```text
-http://localhost:5173
+### Local service addresses
+
+| Service | Local address |
+| --- | --- |
+| EventZ frontend | `http://localhost:5173` |
+| EventZ API | `http://localhost:5001/api` |
+| MongoDB | `mongodb://127.0.0.1:27017/eventz` |
+| Redis | `redis://127.0.0.1:6379` |
+
+## Build and lint
+
+Run these commands from `frontend/`:
+
+```bash
+npm run build
+npm run lint
 ```
 
-## Local Services
-
-### MongoDB
-
-Used for persistent application data including:
-
-* Users
-* Events
-* Tickets
-* Bookings
-* Other application records
-
-### Redis
-
-Used for:
-
-* Distributed locking
-* Temporary ticket reservations
-* Reservation expiration using TTL
-* Concurrency control
-
-### Node.js and Express
-
-Provides the backend REST APIs and business logic.
-
-### React and Vite
-
-Provides the web-based user interface.
-
-No cloud database or cloud deployment is required for local development.
-
-## Security
-
-EventZ implements multiple security mechanisms:
-
-* JWT-based authentication
-* Role-based authorization
-* Resource ownership validation
-* Redis distributed locking
-* Temporary ticket reservations with expiration
-* Signed QR/JWT ticket tokens
-* Ticket status validation
-* Replay protection for already-used tickets
-* Protected backend APIs
-
-## User Roles
-
-| Role             | Responsibilities                                                                                    |
-| ---------------- | --------------------------------------------------------------------------------------------------- |
-| Ticket Buyer     | Browse events, reserve tickets, purchase tickets, and access booked tickets                         |
-| Event Organizer  | Create events, manage events, manage ticket inventory, and monitor sales                            |
-| Venue Gatekeeper | Scan QR tickets, view ticket-holder details and profile image, verify attendees, and validate entry |
-| Super Admin      | Manage users, events, and platform-level operations                                                 |
-
-## Core Booking Logic
-
-EventZ focuses on preventing ticket overselling under concurrent requests.
-
-For example, if multiple users attempt to purchase the final available ticket at the same time:
+## Project structure
 
 ```text
-User A -----+
-            |
-User B -----+----> Redis Lock ----> Inventory Check
-            |
-User C -----+
-                         |
-                         v
-                  One request gets lock
-                         |
-                         v
-                  Ticket is reserved
-                         |
-                         v
-                  Lock is released
-                         |
-                         v
-              Other requests re-check
-                    availability
+EventZ/
+├── backend/
+│   ├── config/       # MongoDB and Redis configuration
+│   ├── middleware/   # Authentication, authorization, and errors
+│   ├── models/       # MongoDB models
+│   ├── routes/       # REST API routes
+│   └── server.js     # Express application
+├── frontend/
+│   └── src/
+│       ├── components/
+│       ├── context/
+│       └── pages/
+└── mobile-cam/       # Standalone CameraBridge service and docs
 ```
 
-This prevents multiple concurrent requests from successfully reserving the same inventory.
+## Security notes
 
-## Project Goals
-
-The primary goals of EventZ are to:
-
-1. Prevent ticket overselling under high concurrency.
-2. Provide secure temporary ticket reservations.
-3. Implement strict role-based access control.
-4. Provide secure QR-based ticket verification.
-5. Allow gatekeepers to verify attendees using ticket-holder information and profile images.
-6. Prevent replay of already-used tickets.
-7. Provide event revenue and sales insights.
-8. Keep the complete application runnable locally.
-
-## Future Improvements
-
-Potential future improvements include:
-
-* Payment gateway integration
-* Advanced event analytics
-* Email and SMS notifications
-* Reservation-expiry notifications
-* Automated load testing
-* Improved monitoring and logging
-* Production deployment configuration
-* Advanced fraud detection
-
+- Use HTTPS in production, especially for mobile camera access.
+- Keep `JWT_SECRET`, database URLs, and other credentials private.
+- Event and ticket APIs enforce authentication, role access, and resource ownership.
+- CameraBridge session links are short-lived credentials; share them only with the devices participating in a scan.
+- Rejected scan imports are limited to the minimum report data required for organizer review; the original CSV is not uploaded or retained by EventZ.
 
 ## Author
 
-Dilip Kumar
-
+**Dilip Kumar**
 Computer Science and Engineering

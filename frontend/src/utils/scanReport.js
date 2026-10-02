@@ -53,6 +53,7 @@ export function parseScanReportCsv(contents, eventId, validTicketNumbers, validT
   }
 
   const ticketStatuses = new Map();
+  const rejectedTicketCounts = new Map();
   let ignoredRows = 0;
   let ignoredStatusRows = 0;
 
@@ -67,15 +68,20 @@ export function parseScanReportCsv(contents, eventId, validTicketNumbers, validT
     }
 
     const scannedTicketNumber = normalizeTicketNumber(values[ticketNumberIndex]);
-    const ticketId = ticketIdIndex === -1 ? '' : values[ticketIdIndex].trim().toLowerCase();
-    const ticketNumber = validTicketIds.get(ticketId)
-      || (validTicketNumbers.has(scannedTicketNumber) ? scannedTicketNumber : '');
     const status = values[statusIndex].trim().toUpperCase();
-    if (!['ACCEPTED', 'REJECTED'].includes(status)) {
+    if (!scannedTicketNumber || !['ACCEPTED', 'REJECTED'].includes(status)) {
       ignoredStatusRows += 1;
       return;
     }
+    if (status === 'REJECTED') {
+      rejectedTicketCounts.set(scannedTicketNumber, (rejectedTicketCounts.get(scannedTicketNumber) || 0) + 1);
+    }
+
+    const ticketId = ticketIdIndex === -1 ? '' : values[ticketIdIndex].trim().toLowerCase();
+    const ticketNumber = validTicketIds.get(ticketId)
+      || (validTicketNumbers.has(scannedTicketNumber) ? scannedTicketNumber : '');
     if (!ticketNumber) {
+      if (status === 'REJECTED') return;
       ignoredRows += 1;
       return;
     }
@@ -84,11 +90,15 @@ export function parseScanReportCsv(contents, eventId, validTicketNumbers, validT
     if (status === 'ACCEPTED' || !currentStatus) ticketStatuses.set(ticketNumber, status);
   });
 
-  if (!ticketStatuses.size) {
+  if (!ticketStatuses.size && !rejectedTicketCounts.size) {
     throw new Error('No accepted or rejected scan rows matched tickets for this event.');
   }
 
-  return { ticketStatuses, ignoredRows, ignoredStatusRows };
+  const rejectedTickets = [...rejectedTicketCounts]
+    .map(([ticketNumber, rejectionCount]) => ({ ticketNumber, rejectionCount }))
+    .sort((left, right) => left.ticketNumber.localeCompare(right.ticketNumber));
+
+  return { ticketStatuses, rejectedTickets, ignoredRows, ignoredStatusRows };
 }
 
 export function getTicketAttendanceStatus(ticket, scanStatuses) {

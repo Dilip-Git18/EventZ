@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart3, CheckCircle2, FileSpreadsheet, Upload, UserX, XCircle } from 'lucide-react';
+import { BarChart3, CheckCircle2, FileSpreadsheet, Mail, Search, Upload, UserRound, UserX, XCircle } from 'lucide-react';
 import Loader from '../../components/Common/Loader';
-import { useAuth } from '../../context/AuthContext';
+import { API_BASE_URL, useAuth } from '../../context/AuthContext';
 import { getTicketAttendanceStatus, normalizeTicketNumber, parseScanReportCsv } from '../../utils/scanReport';
+
+const API_ORIGIN = new URL(API_BASE_URL).origin;
 
 const sections = [
   { status: 'ATTENDED', title: 'Attended', icon: CheckCircle2, color: 'var(--accent-green)' },
@@ -14,8 +16,11 @@ const OrganizerEventStats = () => {
   const { apiFetch, showToast } = useAuth();
   const [events, setEvents] = useState([]);
   const [eventId, setEventId] = useState('');
+  const [ticketSearch, setTicketSearch] = useState('');
   const [tickets, setTickets] = useState([]);
   const [scanStatuses, setScanStatuses] = useState(new Map());
+  const [rejectedTickets, setRejectedTickets] = useState([]);
+  const [rejectedReportImportedAt, setRejectedReportImportedAt] = useState('');
   const [uploadName, setUploadName] = useState('');
   const [uploadMessage, setUploadMessage] = useState('');
   const [loadingEvents, setLoadingEvents] = useState(true);
@@ -38,7 +43,10 @@ const OrganizerEventStats = () => {
 
   useEffect(() => {
     setTickets([]);
+    setTicketSearch('');
     setScanStatuses(new Map());
+    setRejectedTickets([]);
+    setRejectedReportImportedAt('');
     setUploadName('');
     setUploadMessage('');
     if (!eventId) return undefined;
@@ -47,7 +55,11 @@ const OrganizerEventStats = () => {
     setLoadingTickets(true);
     authRef.current.apiFetch(`/organizer/events/${encodeURIComponent(eventId)}/tickets`)
       .then((data) => {
-        if (active && data.success) setTickets(data.tickets || []);
+        if (active && data.success) {
+          setTickets(data.tickets || []);
+          setRejectedTickets(data.rejectedScanReport?.rejectedTickets || []);
+          setRejectedReportImportedAt(data.rejectedScanReport?.importedAt || '');
+        }
       })
       .catch((error) => authRef.current.showToast(error.message, 'error'))
       .finally(() => {
@@ -57,6 +69,9 @@ const OrganizerEventStats = () => {
   }, [eventId]);
 
   const selectedEvent = events.find((event) => event._id === eventId);
+  const searchedTicket = ticketSearch.trim()
+    ? tickets.find((ticket) => normalizeTicketNumber(ticket.ticketNumber) === normalizeTicketNumber(ticketSearch))
+    : null;
   const validTicketNumbers = useMemo(
     () => new Set(tickets.map((ticket) => normalizeTicketNumber(ticket.ticketNumber))),
     [tickets]
@@ -72,20 +87,22 @@ const OrganizerEventStats = () => {
     if (!file) return;
 
     try {
-      if (!eventId || !tickets.length) throw new Error('Select an event with issued tickets before uploading a scan sheet.');
+      if (!eventId) throw new Error('Select an event before uploading a scan sheet.');
       if (!file.name.toLowerCase().endsWith('.csv')) throw new Error('Upload the CSV scan sheet downloaded from CameraBridge.');
 
       const parsed = parseScanReportCsv(await file.text(), eventId, validTicketNumbers, validTicketIds);
+      const data = await apiFetch(`/organizer/events/${encodeURIComponent(eventId)}/rejected-scans`, {
+        method: 'PUT',
+        body: JSON.stringify({ rejectedTickets: parsed.rejectedTickets })
+      });
       setScanStatuses(parsed.ticketStatuses);
+      setRejectedTickets(data.rejectedScanReport.rejectedTickets);
+      setRejectedReportImportedAt(data.rejectedScanReport.importedAt);
       setUploadName(file.name);
       const ignored = parsed.ignoredRows + parsed.ignoredStatusRows;
-      const rejectedCount = [...parsed.ticketStatuses.values()].filter((status) => status === 'REJECTED').length;
-      setUploadMessage(`${parsed.ticketStatuses.size} event tickets matched, including ${rejectedCount} rejected scan${rejectedCount === 1 ? '' : 's'}.${ignored ? ` ${ignored} unsupported or unrelated rows were ignored.` : ''} Imported scan data stays in this browser and is not saved to EventZ.`);
-      showToast('Scan sheet imported for this event.', 'success');
+      setUploadMessage(`${parsed.ticketStatuses.size} event tickets matched; ${parsed.rejectedTickets.length} rejected ticket number${parsed.rejectedTickets.length === 1 ? '' : 's'} saved for this event.${ignored ? ` ${ignored} unsupported or unrelated rows were ignored.` : ''}`);
+      showToast('Scan sheet imported and rejected ticket counts saved for this event.', 'success');
     } catch (error) {
-      setScanStatuses(new Map());
-      setUploadName('');
-      setUploadMessage('');
       showToast(error.message, 'error');
     }
   };
@@ -140,10 +157,61 @@ const OrganizerEventStats = () => {
             {uploadName && <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>{uploadName}</span>}
           </div>
         </div>
+        <div>
+          <label htmlFor="ticket-search" className="form-label">Search ticket number</label>
+          <div style={{ position: 'relative' }}>
+            <Search size={17} style={{ position: 'absolute', left: '12px', top: '13px', color: 'var(--text-muted)' }} />
+            <input
+              id="ticket-search"
+              className="form-control"
+              type="search"
+              placeholder="Enter ticket number"
+              value={ticketSearch}
+              onChange={(event) => setTicketSearch(event.target.value)}
+              disabled={!eventId || loadingTickets}
+              style={{ paddingLeft: '2.4rem' }}
+            />
+          </div>
+        </div>
         <p style={{ gridColumn: '1 / -1', color: 'var(--text-muted)', fontSize: '12px', lineHeight: 1.5 }}>
-          Upload the Excel-compatible CSV from the CameraBridge host. Scan results in the uploaded sheet determine those tickets&apos; sections; tickets without a row use EventZ&apos;s existing check-in status. Accepted rows take precedence over rejected duplicates. Imported rejected rows are kept only in this page&apos;s memory.
+          Upload the Excel-compatible CSV from the CameraBridge host. Rejected ticket numbers and their scan counts are saved to this EventZ event and remain available after refresh. Attended and absent are based on issued tickets, accepted rows, and EventZ check-in status.
         </p>
       </div>
+
+      {ticketSearch.trim() && eventId && !loadingTickets && (
+        <section className="glass-panel" aria-live="polite" style={{ display: 'flex', gap: '1.25rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+          {searchedTicket ? (
+            <>
+              {searchedTicket.buyerPhoto ? (
+                <img
+                  src={new URL(searchedTicket.buyerPhoto, API_ORIGIN).href}
+                  alt={`${searchedTicket.buyerName} profile`}
+                  onError={(event) => { event.currentTarget.hidden = true; }}
+                  style={{ width: '96px', height: '96px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--glass-border)' }}
+                />
+              ) : (
+                <div aria-hidden="true" style={{ width: '96px', height: '96px', borderRadius: '50%', display: 'grid', placeItems: 'center', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>
+                  <UserRound size={36} />
+                </div>
+              )}
+              <div style={{ flex: 1, minWidth: '220px' }}>
+                <h2 style={{ fontSize: '1.15rem', marginBottom: '0.6rem' }}>{searchedTicket.attendeeName}</h2>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>Buyer: {searchedTicket.buyerName}</p>
+                {searchedTicket.buyerEmail && (
+                  <p style={{ color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
+                    <Mail size={14} style={{ verticalAlign: 'middle', marginRight: '6px' }} />{searchedTicket.buyerEmail}
+                  </p>
+                )}
+                <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                  Ticket {searchedTicket.ticketNumber} · {searchedTicket.categoryName} · {searchedTicket.status}
+                </p>
+              </div>
+            </>
+          ) : (
+            <p style={{ color: 'var(--text-secondary)' }}>No ticket found with number “{ticketSearch.trim()}” for this event.</p>
+          )}
+        </section>
+      )}
 
       {uploadMessage && (
         <div role="status" style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '0 0 1rem' }}>
@@ -161,7 +229,10 @@ const OrganizerEventStats = () => {
         <>
           <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem' }}>{selectedEvent?.title || 'Event attendance'}</h2>
           {reportSections.map(({ status, title, icon: Icon, color, groups }) => {
-            const ticketCount = groups.reduce((total, group) => total + group.ticketNumbers.length, 0);
+            const rejectedSection = status === 'REJECTED' && rejectedReportImportedAt;
+            const ticketCount = rejectedSection
+              ? rejectedTickets.length
+              : groups.reduce((total, group) => total + group.ticketNumbers.length, 0);
             return (
               <section key={status} className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1rem', borderTop: `3px solid ${color}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '1rem' }}>
@@ -170,17 +241,35 @@ const OrganizerEventStats = () => {
                   <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>{ticketCount} ticket{ticketCount === 1 ? '' : 's'}</span>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px', minWidth: '520px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px', minWidth: rejectedSection ? '240px' : '520px' }}>
                     <thead>
                       <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-secondary)' }}>
-                        <th style={{ padding: '10px 8px' }}>Ticket holder</th>
-                        <th style={{ padding: '10px 8px' }}>Category</th>
-                        <th style={{ padding: '10px 8px', textAlign: 'center' }}>Tickets</th>
-                        <th style={{ padding: '10px 8px' }}>Ticket number(s)</th>
+                        {rejectedSection ? (
+                          <>
+                            <th style={{ padding: '10px 8px' }}>Rejected ticket number</th>
+                            <th style={{ padding: '10px 8px', textAlign: 'center' }}>Rejection count</th>
+                          </>
+                        ) : (
+                          <>
+                            <th style={{ padding: '10px 8px' }}>Ticket holder</th>
+                            <th style={{ padding: '10px 8px' }}>Category</th>
+                            <th style={{ padding: '10px 8px', textAlign: 'center' }}>Tickets</th>
+                            <th style={{ padding: '10px 8px' }}>Ticket number(s)</th>
+                          </>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
-                      {groups.length ? groups.map((group) => (
+                      {rejectedSection
+                        ? rejectedTickets.length ? rejectedTickets.map(({ ticketNumber, rejectionCount }) => (
+                          <tr key={ticketNumber} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ padding: '12px 8px', fontWeight: 600 }}>{ticketNumber}</td>
+                            <td style={{ padding: '12px 8px', textAlign: 'center' }}>{rejectionCount}</td>
+                          </tr>
+                        )) : (
+                          <tr><td colSpan="2" style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>No rejected ticket numbers in the uploaded sheet.</td></tr>
+                        )
+                        : groups.length ? groups.map((group) => (
                         <tr key={`${group.categoryName}-${group.attendeeName}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                           <td style={{ padding: '12px 8px', fontWeight: 600 }}>{group.attendeeName}</td>
                           <td style={{ padding: '12px 8px', color: 'var(--text-secondary)' }}>{group.categoryName}</td>
