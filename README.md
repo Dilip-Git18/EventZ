@@ -183,6 +183,47 @@ The Redis distributed lock ensures that concurrent requests cannot reserve the s
                                            Mark Ticket Used
 ```
 
+## Mobile Camera Scanning with CameraBridge
+
+CameraBridge is a separate, standalone service that lets a phone camera scan tickets for an EventZ gatekeeper. It does **not** need EventZ credentials, an EventZ account, or a direct connection to the EventZ database. EventZ and CameraBridge work together through a short-lived barcode session and a read-only WebSocket connection:
+
+```text
+Phone browser       CameraBridge       EventZ gatekeeper browser       EventZ backend
+     |                    |                       |                           |
+     |-- scan QR -------->|                       |                           |
+     |                    |-- scan + scan ID ---->|                           |
+     |                    |                       |-- validate with login --->|
+     |                    |                       |<-- ticket result ---------|
+     |                    |<-- result + scan ID --|                           |
+     |<-- show result ----|                       |                           |
+```
+
+The phone connects to CameraBridge using the mobile session link. The EventZ gatekeeper browser connects to the same session as a read-only viewer, receives each scan, and submits it to the normal EventZ ticket-validation API using the signed-in gatekeeper's EventZ session. EventZ remains responsible for checking the ticket, marking valid tickets as used, recording scan history, and returning attendee details. The validation response travels back through CameraBridge to the phone. The phone does not call EventZ directly.
+
+### Connect a phone scanner to EventZ
+
+1. Deploy and open the standalone CameraBridge web service over HTTPS. CameraBridge is hosted separately from EventZ; use its own service URL.
+2. In CameraBridge, select **Barcode scanning** and choose **Create session link**. The generated session is short-lived (10 minutes by default).
+3. Open the **mobile link** on the phone and allow camera access. Keep the CameraBridge session page available while scanning.
+4. Copy the **viewer link** and paste it into **Connect Mobile Cam Bridge** in the EventZ gatekeeper's **Ticket Scanner** page. Connect the link. The mobile link can also be used there, but the viewer link is the least-privileged option.
+5. Confirm EventZ shows the bridge as connected and the phone as connected, then scan a ticket. EventZ displays the validation result and attendee details in the gatekeeper page; the phone also receives the result.
+6. When finished, stop the CameraBridge session. The session and its links expire automatically; create a new session for a later scanning session.
+
+The phone must use the mobile link, not the viewer link. The viewer is read-only: it can deliver scans to EventZ and receive their validation results, but it cannot scan using a camera. CameraBridge does not validate ticket signatures or decide whether entry is allowed; only EventZ does that. If EventZ is unavailable or the gatekeeper is not signed in, the scan cannot be validated.
+
+Camera access requires HTTPS on the phone. `BarcodeDetector` is used where supported. Manual token entry is available as a fallback, but automatic camera scan forwarding requires a supported barcode scanner in the mobile browser. CameraBridge sessions are in-memory and intended for a single service instance; restarting or scaling the bridge can invalidate active sessions. Treat session links as temporary credentials and do not post or share them publicly.
+
+### Connection status and troubleshooting
+
+| EventZ status | What it means |
+| ------------- | ------------- |
+| Bridge connected | The EventZ browser has an active WebSocket connection to the CameraBridge session. |
+| Mobile connected | A phone browser has joined that session. |
+| Both connected | Scans can be relayed to EventZ for validation. |
+| Session ended or expired | Create a new barcode session in CameraBridge and replace the saved link in EventZ. |
+
+If EventZ says the bridge is disconnected, check that the viewer link belongs to an active barcode session and that the browser can reach the CameraBridge service. If the bridge is connected but the mobile device is not, open the mobile link on the phone and grant camera permission. If a scan arrives but cannot be validated, check that the EventZ backend is running and that the gatekeeper is logged in; CameraBridge cannot replace EventZ validation.
+
 ## Local Development
 
 EventZ is designed to run completely on localhost without requiring cloud services.
