@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { API_BASE_URL, useAuth } from '../../context/AuthContext';
 import Loader from '../../components/Common/Loader';
 import { ScanQrCode, Clipboard, FileUp, CheckCircle2, AlertTriangle, XCircle, History, Link2, Unplug, Eye, Laptop, Smartphone, ClipboardPaste } from 'lucide-react';
 import jsQR from 'jsqr';
 
-const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api').replace(/\/api\/?$/, '');
+const API_ORIGIN = new URL(API_BASE_URL).origin;
 
 const decodeTicketQr = (value) => {
   try {

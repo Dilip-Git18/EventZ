@@ -239,6 +239,14 @@ http://localhost:5001
 
 ## Frontend Setup
 
+Create `frontend/.env` and set the backend API URL:
+
+```env
+VITE_API_BASE_URL=http://localhost:5001/api
+```
+
+For a deployed frontend, set `VITE_API_BASE_URL` to the deployed EventZ backend URL ending in `/api`, then rebuild/redeploy the frontend. Profile photos are served by the backend at `/uploads/...`, so gatekeeper images use this same backend origin.
+
 ```bash
 cd frontend
 npm install
