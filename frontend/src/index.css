@@ -236,6 +236,170 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+@media (max-width: 768px) {
+  .sidebar {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 64px;
+    position: fixed !important;
+    top: 0 !important;
+    bottom: auto !important;
+    padding: 0.7rem 1rem !important;
+    flex-direction: row !important;
+    align-items: center;
+    overflow-x: auto;
+  }
+
+  .sidebar > div:first-child {
+    flex: 0 0 auto;
+    margin: 0 1rem 0 0 !important;
+  }
+
+  .sidebar > div:last-child {
+    display: none;
+  }
+
+  .sidebar nav {
+    flex: 1 0 auto !important;
+    flex-direction: row !important;
+    gap: 6px !important;
+    overflow-x: auto;
+  }
+
+  .sidebar-link {
+    flex: 0 0 auto;
+    padding: 0.65rem 0.8rem !important;
+    font-size: 0.8rem !important;
+    white-space: nowrap;
+  }
+
+  .sidebar-link span {
+    display: none;
+  }
+
+  .navbar {
+    height: 58px !important;
+    margin-top: 64px;
+    padding: 0 1rem !important;
+  }
+
+  .navbar h2 {
+    font-size: 0.95rem !important;
+  }
+
+  .navbar > div:last-child {
+    gap: 10px !important;
+  }
+
+  .nav-profile-link span,
+  .navbar button span {
+    display: none;
+  }
+
+  .main-content {
+    padding: 1rem !important;
+    padding-top: 1rem !important;
+  }
+
+  .glass-panel,
+  .glass-card {
+    padding: 1rem !important;
+  }
+
+  .btn {
+    min-height: 42px;
+    padding: 0.65rem 0.85rem;
+    font-size: 0.85rem;
+  }
+
+  h1 {
+    font-size: 1.65rem !important;
+    line-height: 1.2;
+  }
+
+  h2 {
+    font-size: 1.35rem !important;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    max-width: 100%;
+  }
+
+  div[style*="grid-template-columns: 1fr 1fr"],
+  div[style*="gridTemplateColumns: '1fr 1fr'"],
+  div[style*="gridTemplateColumns: \"1fr 1fr\""] {
+    grid-template-columns: 1fr !important;
+  }
+
+  table {
+    min-width: 620px;
+  }
+
+  .table-wrapper,
+  [style*="overflowX: 'auto'"] {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .toast-container {
+    top: 72px;
+    right: 12px;
+    left: 12px;
+  }
+
+  .gatekeeper-grid > .glass-panel {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  .gatekeeper-grid .mobile-bridge-panel {
+    padding: 12px !important;
+  }
+
+  .gatekeeper-grid video {
+    min-height: 0 !important;
+  }
+
+  svg[style*="min-width"] {
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar {
+    padding-inline: 0.6rem !important;
+  }
+
+  .sidebar > div:first-child {
+    margin-right: 0.4rem !important;
+  }
+
+  .sidebar-link {
+    padding: 0.6rem !important;
+  }
+
+  .main-content {
+    padding-inline: 0.75rem !important;
+  }
+
+  .glass-card,
+  .glass-panel {
+    border-radius: 10px;
+  }
+
+  .form-control {
+    font-size: 16px;
+  }
+
+  .badge {
+    font-size: 0.65rem;
+    padding-inline: 0.55rem;
+  }
+}
+
 /* Pulsing Reservation Timer */
 .timer-pulse {
   animation: pulse 1.5s infinite alternate;
