@@ -4,6 +4,8 @@ import Loader from '../../components/Common/Loader';
 import { ScanQrCode, Clipboard, FileUp, CheckCircle2, AlertTriangle, XCircle, History, Link2, Unplug, Eye, Laptop, Smartphone, ClipboardPaste } from 'lucide-react';
 import jsQR from 'jsqr';
 
+const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api').replace(/\/api\/?$/, '');
+
 const decodeTicketQr = (value) => {
   try {
     const parts = String(value || '').split('.');
@@ -259,7 +261,7 @@ const GatekeeperDashboard = () => {
           ? {
             ...data.ticketDetails,
             buyerPhoto: data.ticketDetails.buyerPhoto
-              ? new URL(data.ticketDetails.buyerPhoto, window.location.origin).href
+              ? new URL(data.ticketDetails.buyerPhoto, API_ORIGIN).href
               : ''
           }
           : null;
@@ -1084,7 +1086,7 @@ const GatekeeperDashboard = () => {
                     <div style={{ width: '88px' }}>
                       {result.ticketDetails.buyerPhoto ? (
                         <img
-                          src={`http://localhost:5001${result.ticketDetails.buyerPhoto}`}
+                          src={result.ticketDetails.buyerPhoto}
                           alt="Buyer profile"
                           style={{ width: '88px', height: '88px', objectFit: 'cover', borderRadius: '12px', border: '1px solid var(--glass-border)' }}
                         />
