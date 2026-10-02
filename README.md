@@ -213,6 +213,12 @@ The phone must use the mobile link, not the viewer link. The viewer is read-only
 
 Camera access requires HTTPS on the phone. `BarcodeDetector` is used where supported. Manual token entry is available as a fallback, but automatic camera scan forwarding requires a supported barcode scanner in the mobile browser. CameraBridge sessions are in-memory and intended for a single service instance; restarting or scaling the bridge can invalidate active sessions. Treat session links as temporary credentials and do not post or share them publicly.
 
+### Organizer Event Stats attendance report
+
+After gatekeepers finish validating tickets through CameraBridge, download the **Excel-compatible scan sheet** from the CameraBridge host page. In EventZ, open **Event Stats** in the organizer sidebar, select the matching event, and upload that `.csv` file. EventZ compares ticket numbers from the sheet against that event's issued ticket holders and groups results into attended, rejected, and absent, showing each holder, ticket category, and ticket number. Multiple tickets for the same holder and category are grouped together.
+
+The report does not save uploaded scan sheets or rejected scan rows to EventZ. Imported rows are held in the organizer page's memory only and are cleared when the page is refreshed or the event is changed. EventZ's existing `USED` ticket status and accepted scan rows take precedence over rejected duplicate attempts. Without an uploaded sheet, tickets already marked `USED` appear as attended and the remaining issued tickets appear as absent.
+
 ### Connection status and troubleshooting
 
 | EventZ status | What it means |

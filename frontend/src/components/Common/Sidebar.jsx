@@ -11,7 +11,8 @@ import {
   ScanQrCode,
   History,
   Shield,
-  Layers
+  Layers,
+  BarChart3
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -53,6 +54,10 @@ const Sidebar = () => {
             <NavLink to="/organizer/bookings" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
               <Ticket size={18} />
               <span>Event Bookings</span>
+            </NavLink>
+            <NavLink to="/organizer/event-stats" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+              <BarChart3 size={18} />
+              <span>Event Stats</span>
             </NavLink>
             <NavLink to="/profile" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
               <User size={18} />

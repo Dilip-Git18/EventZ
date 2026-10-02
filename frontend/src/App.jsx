@@ -21,6 +21,7 @@ import Profile from './pages/Buyer/Profile';
 import OrganizerDashboard from './pages/Organizer/OrganizerDashboard';
 import CreateEvent from './pages/Organizer/CreateEvent';
 import OrganizerBookings from './pages/Organizer/OrganizerBookings';
+import OrganizerEventStats from './pages/Organizer/OrganizerEventStats';
 
 // Gatekeeper Pages
 import GatekeeperDashboard from './pages/Gatekeeper/GatekeeperDashboard';
@@ -117,6 +118,9 @@ const AppContent = () => {
                 } />
                 <Route path="/organizer/bookings" element={
                   <RoleProtectedRoute allowedRoles={['organizer']}><OrganizerBookings /></RoleProtectedRoute>
+                } />
+                <Route path="/organizer/event-stats" element={
+                  <RoleProtectedRoute allowedRoles={['organizer']}><OrganizerEventStats /></RoleProtectedRoute>
                 } />
 
                 {/* Gatekeeper only routes */}

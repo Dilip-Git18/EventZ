@@ -190,6 +190,49 @@ router.get('/events', protect, authorizeRole('organizer'), async (req, res, next
   }
 });
 
+// @desc    Get issued ticket holders for an organizer-owned event
+// @route   GET /api/organizer/events/:eventId/tickets
+// @access  Private (Organizer)
+router.get('/events/:eventId/tickets', protect, authorizeRole('organizer'), async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.eventId)) {
+      return res.status(400).json({ success: false, message: 'Invalid event ID' });
+    }
+
+    const event = await Event.findOne({ _id: req.params.eventId, organizer: req.user._id })
+      .select('title')
+      .lean();
+
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+
+    const tickets = await Ticket.find({ event: event._id })
+      .select('ticketNumber attendeeName category buyer status scannedAt scannedBy')
+      .populate('category', 'name')
+      .populate('buyer', 'name')
+      .populate('scannedBy', 'name')
+      .sort({ ticketNumber: 1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      event: { _id: event._id, title: event.title },
+      tickets: tickets.map((ticket) => ({
+        _id: ticket._id,
+        ticketNumber: ticket.ticketNumber,
+        attendeeName: ticket.attendeeName || ticket.buyer?.name || 'Unknown attendee',
+        categoryName: ticket.category?.name || 'Uncategorized',
+        status: ticket.status,
+        scannedAt: ticket.scannedAt || null,
+        scannedByName: ticket.scannedBy?.name || ''
+      }))
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // @desc    Get all bookings for organizer's events
 // @route   GET /api/organizer/bookings
 // @access  Private (Organizer)
