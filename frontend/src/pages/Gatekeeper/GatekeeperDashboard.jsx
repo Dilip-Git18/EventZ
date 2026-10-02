@@ -255,20 +255,28 @@ const GatekeeperDashboard = () => {
       });
 
       if (data.success) {
+        const ticketDetails = data.ticketDetails
+          ? {
+            ...data.ticketDetails,
+            buyerPhoto: data.ticketDetails.buyerPhoto
+              ? new URL(data.ticketDetails.buyerPhoto, window.location.origin).href
+              : ''
+          }
+          : null;
         if (bridgeSocketRef.current?.readyState === WebSocket.OPEN) {
           bridgeSocketRef.current.send(JSON.stringify({
             type: 'validation-result',
             scanId,
             status: 'success',
             message: data.message,
-            ticketDetails: data.ticketDetails
+            ticketDetails
           }));
         }
         setBridgeScanStatus('success');
         setResult({
           success: true,
           message: data.message,
-          ticketDetails: data.ticketDetails
+          ticketDetails
         });
         showToast('Ticket validated successfully! Entry approved.', 'success');
         setRawPayload('');
