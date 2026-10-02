@@ -64,7 +64,7 @@ const GatekeeperDashboard = () => {
     try {
       const data = await apiFetch('/gatekeeper/scan-history');
       if (data.success) {
-        setScanLogs(data.scans);
+        setScanLogs((data.scans || []).filter((scan) => scan.status === 'APPROVED'));
       }
     } catch (err) {
       showToast(err.message, 'error');
@@ -186,6 +186,7 @@ const GatekeeperDashboard = () => {
         } else if (message.type === 'event' && message.event?.type === 'scan') {
           if (bridgeEventIdsRef.current.has(message.event.id)) return;
           bridgeEventIdsRef.current.add(message.event.id);
+          if (message.historical) return;
           if (!isTicketQr(message.event.value)) {
             setBridgeScanStatus(null);
             setMobileStatus('waiting');

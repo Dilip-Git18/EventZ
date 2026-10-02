@@ -25,7 +25,7 @@ const scanLogSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['APPROVED', 'REJECTED'],
+      enum: ['APPROVED'],
       required: true
     },
     reason: {
