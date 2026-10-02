@@ -4,6 +4,30 @@ import Loader from '../../components/Common/Loader';
 import { ScanQrCode, Clipboard, FileUp, CheckCircle2, AlertTriangle, XCircle, History, Link2, Unplug, Eye } from 'lucide-react';
 import jsQR from 'jsqr';
 
+const decodeTicketQr = (value) => {
+  try {
+    const parts = String(value || '').split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(decodeURIComponent(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='))
+      .split('').map((character) => `%${character.charCodeAt(0).toString(16).padStart(2, '0')}`).join('')));
+  } catch {
+    return null;
+  }
+};
+
+const isTicketQr = (value) => {
+  const details = decodeTicketQr(value);
+  const serialNumber = details?.ticketNumber || details?.serialNumber;
+  return Boolean(
+    typeof details?.ticketId === 'string' && details.ticketId
+    && typeof details?.eventId === 'string' && details.eventId
+    && serialNumber
+    && (details.attendeeName || details.holderName)
+    && typeof details?.scanCode === 'string' && details.scanCode.length === 8
+  );
+};
+
 const GatekeeperDashboard = () => {
   const { apiFetch, showToast } = useAuth();
   
@@ -162,6 +186,11 @@ const GatekeeperDashboard = () => {
         } else if (message.type === 'event' && message.event?.type === 'scan') {
           if (bridgeEventIdsRef.current.has(message.event.id)) return;
           bridgeEventIdsRef.current.add(message.event.id);
+          if (!isTicketQr(message.event.value)) {
+            setBridgeScanStatus(null);
+            setMobileStatus('waiting');
+            return;
+          }
           setBridgeScanStatus('scanned');
           validatePayload(message.event.value, message.event.scanId);
         } else if (message.type === 'session-expired') {
@@ -532,6 +561,10 @@ const GatekeeperDashboard = () => {
 
     if (qrCode?.data) {
       const text = qrCode.data.trim();
+      if (!isTicketQr(text)) {
+        cameraLoopRef.current = requestAnimationFrame(scanCurrentFrame);
+        return;
+      }
       setRawPayload(text);
       showToast('Camera scan successful. Validating ticket...', 'success');
       await validatePayload(text);
