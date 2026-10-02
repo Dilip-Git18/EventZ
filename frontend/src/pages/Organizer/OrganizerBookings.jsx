@@ -138,7 +138,7 @@ const OrganizerBookings = () => {
                     <td style={{ padding: '14px 8px' }}>{b.category?.name}</td>
                     <td style={{ padding: '14px 8px', textAlign: 'center', fontWeight: 600 }}>{b.quantity}</td>
                     <td style={{ padding: '14px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--accent-green)' }}>
-                      ${b.totalAmount.toFixed(2)}
+                      ₹{b.totalAmount.toFixed(2)}
                     </td>
                     <td style={{ padding: '14px 8px', textAlign: 'center' }}>{getStatusBadge(b.status)}</td>
                     <td style={{ padding: '14px 8px', color: 'var(--text-secondary)' }}>{dateString}</td>

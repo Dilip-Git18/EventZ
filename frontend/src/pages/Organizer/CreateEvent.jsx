@@ -328,7 +328,7 @@ const CreateEvent = () => {
                       </span>
                     </div>
                     <span style={{ color: 'var(--accent-purple)', fontWeight: 700 }}>
-                      ${cat.price.toFixed(2)}
+                      ₹{cat.price.toFixed(2)}
                     </span>
                   </div>
                 ))}
@@ -388,7 +388,7 @@ const CreateEvent = () => {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div className="form-group">
-                  <label className="form-label">Ticket Price ($)</label>
+                  <label className="form-label">Ticket Price (₹)</label>
                   <input
                     type="number"
                     className="form-control"

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Loader from '../../components/Common/Loader';
-import { DollarSign, Ticket, Users, BarChart3, PlusCircle, Percent, MapPin, CircleAlert, Edit3, Save, X } from 'lucide-react';
+import { IndianRupee, Ticket, Users, BarChart3, PlusCircle, Percent, MapPin, CircleAlert, Edit3, Save, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const OrganizerDashboard = () => {
@@ -238,14 +238,14 @@ const OrganizerDashboard = () => {
             alignItems: 'center',
             justifyContent: 'center'
           }}>
-            <DollarSign size={22} />
+            <IndianRupee size={22} />
           </div>
           <div>
             <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
               Total Net Revenue
             </span>
             <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 800, color: '#fff' }}>
-              ${summary.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              ₹{summary.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
           </div>
         </div>
@@ -367,7 +367,7 @@ const OrganizerDashboard = () => {
                         {cat.sold} / {cat.capacity}
                       </td>
                       <td style={{ padding: '10px 4px', textAlign: 'right', fontWeight: 600, color: 'var(--accent-green)' }}>
-                        ${cat.revenue.toLocaleString()}
+                        ₹{cat.revenue.toLocaleString()}
                       </td>
                     </tr>
                   ))
