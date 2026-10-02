@@ -22,12 +22,6 @@ router.post('/validate-ticket', protect, authorizeRole('gatekeeper', 'admin'), a
       if (ticketByReference) qrCodeData = ticketByReference.qrCodeData;
     }
     if (!qrCodeData) {
-      await ScanLog.create({
-        gatekeeper: req.user._id,
-        event: eventId || undefined,
-        status: 'REJECTED',
-        reason: 'QR Code payload is missing'
-      });
       return res.status(400).json({ success: false, message: 'QR Code payload is missing' });
     }
 
@@ -36,23 +30,11 @@ router.post('/validate-ticket', protect, authorizeRole('gatekeeper', 'admin'), a
       // 1. Verify signature of the ticket JWT
       decoded = jwt.verify(qrCodeData, process.env.JWT_SECRET);
     } catch (err) {
-      await ScanLog.create({
-        gatekeeper: req.user._id,
-        event: eventId || undefined,
-        status: 'REJECTED',
-        reason: 'Invalid or tampered QR ticket signature'
-      });
       return res.status(400).json({ success: false, message: 'Invalid or tampered QR ticket signature' });
     }
 
     const { ticketId } = decoded;
     if (!ticketId) {
-      await ScanLog.create({
-        gatekeeper: req.user._id,
-        event: eventId || undefined,
-        status: 'REJECTED',
-        reason: 'Invalid QR ticket metadata'
-      });
       return res.status(400).json({ success: false, message: 'Invalid QR ticket metadata' });
     }
 
@@ -64,12 +46,6 @@ router.post('/validate-ticket', protect, authorizeRole('gatekeeper', 'admin'), a
       .populate('scannedBy', 'name');
 
     if (!ticket) {
-      await ScanLog.create({
-        gatekeeper: req.user._id,
-        event: eventId || undefined,
-        status: 'REJECTED',
-        reason: 'Ticket record not found in system database'
-      });
       return res.status(404).json({ success: false, message: 'Ticket record not found in system database' });
     }
 
@@ -78,31 +54,12 @@ router.post('/validate-ticket', protect, authorizeRole('gatekeeper', 'admin'), a
       && (!decoded.scanCode || decoded.scanCode === ticket.scanCode)
       && (!decoded.attendeeName || decoded.attendeeName === (ticket.attendeeName || ticket.buyer.name));
     if (!ticketClaimsMatch) {
-      await ScanLog.create({
-        gatekeeper: req.user._id,
-        ticket: ticket._id,
-        event: eventId || ticket.event._id,
-        buyer: ticket.buyer._id,
-        ticketNumber: ticket.ticketNumber,
-        status: 'REJECTED',
-        reason: 'QR ticket metadata does not match the system record'
-      });
       return res.status(400).json({ success: false, message: 'Invalid or tampered QR ticket metadata' });
     }
 
 
     if (eventId && ticket.event._id.toString() !== eventId.toString()) {
       const message = 'This is not this event ticket.';
-      await ScanLog.create({
-        gatekeeper: req.user._id,
-        ticket: ticket._id,
-        event: eventId,
-        buyer: ticket.buyer._id,
-        ticketNumber: ticket.ticketNumber,
-        status: 'REJECTED',
-        reason: message
-      });
-
       return res.status(400).json({
         success: false,
         message,
@@ -116,16 +73,6 @@ router.post('/validate-ticket', protect, authorizeRole('gatekeeper', 'admin'), a
     // 3. Verify booking status
     const booking = await Booking.findById(ticket.booking);
     if (!booking || booking.status !== 'CONFIRMED') {
-      await ScanLog.create({
-        gatekeeper: req.user._id,
-        ticket: ticket._id,
-        event: ticket.event._id,
-        buyer: ticket.buyer._id,
-        ticketNumber: ticket.ticketNumber,
-        status: 'REJECTED',
-        reason: 'Entry rejected because booking is not finalized or has expired'
-      });
-
       return res.status(400).json({
         success: false,
         message: 'Entry Rejected: Associated booking is not finalized or has expired'
@@ -140,16 +87,6 @@ router.post('/validate-ticket', protect, authorizeRole('gatekeeper', 'admin'), a
         second: '2-digit'
       });
       const gatekeeperName = ticket.scannedBy?.name || 'Unknown Gatekeeper';
-
-      await ScanLog.create({
-        gatekeeper: req.user._id,
-        ticket: ticket._id,
-        event: ticket.event._id,
-        buyer: ticket.buyer._id,
-        ticketNumber: ticket.ticketNumber,
-        status: 'REJECTED',
-        reason: `Duplicate scan - previously scanned by ${gatekeeperName} at ${scanDate}`
-      });
 
       return res.status(400).json({
         success: false,
@@ -204,7 +141,9 @@ router.post('/validate-ticket', protect, authorizeRole('gatekeeper', 'admin'), a
 // @access  Private (Gatekeeper / Admin)
 router.get('/scan-history', protect, authorizeRole('gatekeeper', 'admin'), async (req, res, next) => {
   try {
-    const query = req.user.role === 'admin' ? {} : { gatekeeper: req.user._id };
+    const query = req.user.role === 'admin'
+      ? { status: 'APPROVED' }
+      : { gatekeeper: req.user._id, status: 'APPROVED' };
     const scans = await ScanLog.find(query)
       .populate('event', 'title venueName')
       .populate('buyer', 'name profilePhoto')

@@ -57,7 +57,7 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static upload folders (banner images)
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-// Rate Limiting (Prevent spamming / DDoS)
+// Keep API protection enabled outside local development.
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 300, // Limit each IP to 300 requests per window
@@ -68,7 +68,7 @@ const apiLimiter = rateLimit({
     message: 'Too many requests from this IP, please try again after 15 minutes.'
   }
 });
-app.use('/api/', apiLimiter);
+if (process.env.NODE_ENV !== 'development') app.use('/api/', apiLimiter);
 
 // Health check endpoint
 app.get('/api/status', (req, res) => {
