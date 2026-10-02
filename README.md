@@ -45,43 +45,162 @@ The project focuses on a reliable ticket lifecycle: buyers reserve tickets, comp
 | Ticket entry | Signed QR/JWT payloads |
 | Mobile scanning bridge | Express, WebSocket (`ws`), browser camera APIs |
 
-## Application flow
+## How the complete system works
 
-```text
-Buyer                    EventZ                    Gatekeeper
-  |                         |                           |
-  |-- reserve tickets ---->|                           |
-  |                         |-- coordinate inventory    |
-  |-- complete checkout -->|                           |
-  |<-- signed QR tickets --|                           |
-  |                                                     |
-  |-------------------- present ticket ---------------->|
-  |                         |<-- validate signed QR ----|
-  |                         |-- check booking/status -->|
-  |                         |-- mark valid ticket USED ->|
-  |                         |<-- attendee details ------|
+This diagram maps the implemented user journeys to the application services and the data they use:
+
+```mermaid
+flowchart LR
+  subgraph People["People and devices"]
+    Buyer["Ticket buyer"]
+    Organizer["Event organizer"]
+    Gatekeeper["Venue gatekeeper"]
+    Admin["Platform administrator"]
+    Phone["Phone camera"]
+  end
+
+  subgraph Web["EventZ web application"]
+    BuyerUI["Event discovery<br/>Checkout and My Tickets"]
+    OrganizerUI["Organizer dashboard<br/>Events and bookings"]
+    StatsUI["Event Stats<br/>Ticket lookup and CSV upload"]
+    GateUI["Gatekeeper scanner<br/>Camera and scan history"]
+    AdminUI["Admin dashboard"]
+  end
+
+  subgraph Services["EventZ backend"]
+    API["Express REST API"]
+    Auth["JWT authentication<br/>Role and ownership checks"]
+    BookingFlow["Booking and inventory<br/>reservation flow"]
+    TicketFlow["Signed QR verification<br/>and entry decisions"]
+    OrganizerAPI["Organizer event,<br/>sales and ticket APIs"]
+    AdminAPI["Administrator APIs"]
+  end
+
+  Mongo[("MongoDB<br/>users, events, bookings,<br/>tickets, scan logs")]
+  Redis[("Redis<br/>reservation locks<br/>and expiration")]
+  Rejected[("Rejected scan report<br/>ticket number and count")]
+
+  Buyer --> BuyerUI
+  Organizer --> OrganizerUI
+  Organizer --> StatsUI
+  Gatekeeper --> GateUI
+  Admin --> AdminUI
+  BuyerUI --> API
+  OrganizerUI --> API
+  StatsUI --> API
+  GateUI --> API
+  AdminUI --> API
+  API --> Auth
+  Auth --> BookingFlow
+  Auth --> TicketFlow
+  Auth --> OrganizerAPI
+  Auth --> AdminAPI
+  BookingFlow --> Redis
+  BookingFlow --> Mongo
+  TicketFlow --> Mongo
+  OrganizerAPI --> Mongo
+  AdminAPI --> Mongo
+  StatsUI -->|"save latest rejected numbers/counts"| Rejected
+  Rejected -->|"reload for selected event"| StatsUI
+  Phone -->|"QR scan over short-lived session"| CameraBridge
+  CameraBridge -->|"WebSocket scan relay"| GateUI
+  GateUI -->|"signed ticket for validation"| TicketFlow
+  TicketFlow -->|"validation result"| GateUI
+  GateUI -->|"result relay"| CameraBridge
+  CameraBridge -->|"show result"| Phone
+
+  classDef people fill:#172033,stroke:#64748b,color:#f8fafc;
+  classDef ui fill:#312e81,stroke:#8b5cf6,color:#fff;
+  classDef services fill:#164e63,stroke:#22d3ee,color:#fff;
+  classDef storage fill:#14532d,stroke:#4ade80,color:#fff;
+  class Buyer,Organizer,Gatekeeper,Admin,Phone people;
+  class BuyerUI,OrganizerUI,StatsUI,GateUI,AdminUI ui;
+  class API,Auth,BookingFlow,TicketFlow,OrganizerAPI,AdminAPI,CameraBridge services;
+  class Mongo,Redis,Rejected storage;
 ```
 
-Redis coordinates temporary reservations and inventory checks. MongoDB stores users, events, bookings, tickets, and application records. EventZ validates tickets and decides whether entry is accepted.
+### Buyer ticket lifecycle
 
-## CameraBridge integration
+```mermaid
+sequenceDiagram
+  actor Buyer
+  participant Web as EventZ buyer portal
+  participant API as EventZ API
+  participant Redis
+  participant DB as MongoDB
 
-CameraBridge is a separate, standalone phone-camera scanning service included in the [`mobile-cam/`](./mobile-cam/) directory. It relays barcode scans over a short-lived session; it does not contain EventZ credentials, access the EventZ database, or decide whether a ticket is valid.
-
-```text
-Phone camera -> CameraBridge session -> EventZ gatekeeper browser -> EventZ validation API
+  Buyer->>Web: Browse event and choose category
+  Web->>API: Reserve ticket quantity
+  API->>Redis: Acquire event/category inventory lock
+  API->>DB: Check availability and create pending booking
+  API->>Redis: Release lock
+  API-->>Web: Reservation with expiry
+  Buyer->>Web: Complete checkout and attendee names
+  Web->>API: Confirm booking
+  API->>DB: Confirm booking and create individual tickets
+  Note over API,DB: Each ticket has its own number and signed QR payload
+  API-->>Web: Digital tickets
 ```
 
-1. Deploy or run CameraBridge over HTTPS when using a phone camera.
-2. Create a barcode session in CameraBridge and open its mobile link on the phone.
-3. Paste the session's read-only viewer link into **Connect Mobile Cam Bridge** on the EventZ Gatekeeper page.
-4. Scan a ticket. The gatekeeper browser forwards it to EventZ for normal validation.
-5. When scanning is complete, download the CameraBridge CSV report.
-6. In EventZ's organizer portal, open **Event Stats**, select the event, and upload the CSV.
+Reservations expire after five minutes. Redis coordinates concurrent inventory reservations; MongoDB remains the persistent store for bookings and issued tickets.
 
-The **Rejected** report shows ticket numbers marked `REJECTED` and counts the rejected rows for each number, including duplicate scan attempts. EventZ persists only the rejected ticket numbers, counts, importing organizer, and import time for the selected event; it does not store the uploaded CSV or other scan details. A later upload replaces the prior rejected report for that event. Accepted scans and EventZ's existing `USED` ticket status drive attendance; issued tickets without an accepted or used status remain absent.
+### Entry validation and optional CameraBridge
 
-For CameraBridge-specific setup and deployment instructions, see [`mobile-cam/README.md`](./mobile-cam/README.md).
+**Why CameraBridge is used:** a gatekeeper may want to scan with a phone while continuing to review results in the EventZ gatekeeper page on a laptop. CameraBridge connects those two browsers through an expiring barcode session. It forwards scan data but has no EventZ account credentials, database access, or ticket-approval authority. Keeping validation in EventZ means the normal signed-in gatekeeper session and ticket rules remain in control.
+
+```mermaid
+sequenceDiagram
+  actor Guest
+  participant Phone as Phone browser
+  participant Bridge as CameraBridge
+  participant Gate as EventZ gatekeeper browser
+  participant API as EventZ validation API
+  participant DB as MongoDB
+
+  Gate->>Bridge: Join session as read-only viewer
+  Phone->>Bridge: Pair using short-lived mobile link
+  Guest->>Phone: Present ticket QR
+  Phone->>Bridge: Send scanned token and scan ID
+  Bridge->>Gate: Relay scan over WebSocket
+  Gate->>API: Validate QR using gatekeeper login
+  API->>API: Verify signature, event and booking
+  API->>DB: Read ticket and check BOOKED/USED status
+  alt First valid entry
+    API->>DB: Mark USED and save approved ScanLog
+    API-->>Gate: Accepted with attendee and buyer details
+    Gate->>Bridge: Relay accepted result
+    Bridge-->>Phone: Show accepted result
+  else Invalid, wrong event, or already used
+    API-->>Gate: Rejected with validation message
+    Gate->>Bridge: Relay rejected result
+    Bridge-->>Phone: Show rejected result
+  end
+```
+
+CameraBridge is useful when the phone cannot or should not connect directly to EventZ—for example, the phone is only the camera while EventZ stays open on the gatekeeper's laptop. The browser-to-browser relay avoids putting EventZ credentials on the phone. Use the **mobile link** on the phone and the **viewer link** in EventZ. CameraBridge sessions are short-lived, HTTPS is required for phone camera access, and EventZ still performs every ticket validation.
+
+### Organizer operations and scan-sheet reporting
+
+```mermaid
+flowchart TD
+  Organizer["Organizer signs in"] --> Events["Create/manage events<br/>and ticket categories"]
+  Organizer --> Dashboard["Review revenue, ticket sales,<br/>attendance and trends"]
+  Organizer --> Bookings["Review event bookings"]
+  Organizer --> Lookup["Search ticket number"]
+  Lookup --> Details["View attendee, category,<br/>buyer name/email and photo"]
+  Gate["Gatekeeper validates scans"] --> Used["EventZ updates valid ticket<br/>to USED and logs approval"]
+  Used --> Stats["Event Stats uses issued tickets<br/>and current ticket status"]
+  Host["CameraBridge host downloads<br/>accepted/rejected CSV"] --> Upload["Organizer selects event<br/>and uploads CSV"]
+  Upload --> Parse["Browser reads ticket numbers,<br/>statuses and rejection counts"]
+  Parse --> Report[("MongoDB stores latest rejected<br/>ticket-number/count report per event")]
+  Report --> Reload["Refresh or reopen Event Stats"]
+  Reload --> Stats
+  Stats --> Classification["Attended: accepted/USED<br/>Absent: issued without entry<br/>Rejected: CSV rejected numbers<br/>with per-number attempt count"]
+```
+
+The Organizer **Event Stats** page compares issued EventZ ticket records with imported scan results. Rejected ticket numbers are shown even if they do not match a ticket record. EventZ persists only the rejected ticket numbers, count, importing organizer, and import time for the selected event—not the CSV or other scan details. A new upload replaces that event's previous rejected report. Multiple rejected rows for one ticket number are counted as multiple attempts.
+
+For CameraBridge-specific setup, API details, and exact Render deployment steps, see [`mobile-cam/README.md`](./mobile-cam/README.md).
 
 ## Run locally
 
