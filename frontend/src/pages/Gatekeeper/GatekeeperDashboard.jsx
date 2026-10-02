@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Loader from '../../components/Common/Loader';
-import { ScanQrCode, Clipboard, FileUp, CheckCircle2, AlertTriangle, XCircle, History, Link2, Unplug, Eye } from 'lucide-react';
+import { ScanQrCode, Clipboard, FileUp, CheckCircle2, AlertTriangle, XCircle, History, Link2, Unplug, Eye, Laptop, Smartphone, ClipboardPaste } from 'lucide-react';
 import jsQR from 'jsqr';
 
 const decodeTicketQr = (value) => {
@@ -37,6 +37,7 @@ const GatekeeperDashboard = () => {
   const [submitting, setSubmitting] = useState(false);
   const [decodingFile, setDecodingFile] = useState(false);
   const [cameraStatus, setCameraStatus] = useState('idle');
+  const [cameraSource, setCameraSource] = useState('choose');
   const [cameraError, setCameraError] = useState('');
   const [bridgeLink, setBridgeLink] = useState(() => localStorage.getItem('eventz.mobileCamBridgeLink') || '');
   const [bridgeStatus, setBridgeStatus] = useState('idle');
@@ -642,16 +643,16 @@ const GatekeeperDashboard = () => {
   };
 
   useEffect(() => {
-    if (activeTab === 'camera') {
+    if (activeTab === 'camera' && cameraSource === 'local') {
       startCameraScan();
-    } else {
+    } else if (activeTab !== 'camera' || cameraSource !== 'local') {
       stopCameraScan();
     }
 
     return () => {
       stopCameraScan();
     };
-  }, [activeTab]);
+  }, [activeTab, cameraSource]);
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: '30px', alignItems: 'start' }} className="gatekeeper-grid">
@@ -666,7 +667,7 @@ const GatekeeperDashboard = () => {
         </p>
 
         {/* Validator Interface */}
-        <div className="glass-card" style={{ marginBottom: '2rem', padding: '2rem 1.5rem' }}>
+        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', marginBottom: '2rem', padding: '2rem 1.5rem' }}>
           <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
             <label style={{ color: 'var(--text-secondary)', fontSize: '13px', minWidth: '120px' }}>Active Event</label>
             <select
@@ -680,27 +681,59 @@ const GatekeeperDashboard = () => {
               ))}
             </select>
           </div>
-          <div style={{
+          {cameraSource === 'external' && (
+          <div className="mobile-bridge-panel" style={{
+            order: 3,
             marginBottom: '1.5rem',
-            padding: '14px',
+            padding: '18px',
             borderRadius: '10px',
             border: '1px solid var(--glass-border)',
-            background: 'rgba(124, 58, 237, 0.06)'
+            background: 'linear-gradient(145deg, rgba(124, 58, 237, 0.1), rgba(20, 20, 30, 0.42))'
           }}>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-              <Link2 size={15} style={{ color: 'var(--accent-purple)' }} />
-              <strong style={{ color: '#fff', fontSize: '13px' }}>Mobile Cam Bridge</strong>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '5px' }}>
+              <span style={{ display: 'grid', width: '30px', height: '30px', placeItems: 'center', borderRadius: '8px', color: 'var(--accent-purple)', background: 'rgba(124, 58, 237, 0.16)' }}>
+                <Link2 size={16} />
+              </span>
+              <div>
+                <strong style={{ display: 'block', color: '#fff', fontSize: '14px' }}>Connect Mobile Cam Bridge</strong>
+                <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Use your phone as the ticket scanner</span>
+              </div>
             </div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: '0 0 10px' }}>
-              Paste the Mobile Cam barcode session link (the same link you open on the phone) to validate scans here automatically.
+            <p style={{ color: 'var(--text-secondary)', fontSize: '12px', lineHeight: 1.45, margin: '12px 0 10px' }}>
+              Copy the <strong style={{ color: '#fff' }}>mobile session link</strong> from CameraBridge—the same link opened on your phone—and paste it below.
             </p>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <label htmlFor="mobile-cam-bridge-link" style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '11px', fontWeight: 700, marginBottom: '6px' }}>
+              Mobile session link
+            </label>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', flexWrap: 'wrap' }}>
               <input
+                id="mobile-cam-bridge-link"
                 value={bridgeLink}
                 onChange={(event) => setBridgeLink(event.target.value)}
-                placeholder="https://your-mobile-cam.onrender.com/?mode=mobile&session=..."
-                style={{ flex: '1 1 360px', minWidth: 0 }}
+                placeholder="Paste your CameraBridge mobile link here…"
+                aria-label="Mobile Cam Bridge session link"
+                style={{ flex: '1 1 300px', minWidth: 0, margin: 0, padding: '11px 12px', border: '1px solid rgba(148, 163, 184, 0.35)', borderRadius: '8px', background: 'rgba(5, 6, 10, 0.5)', color: '#fff', fontSize: '12px' }}
               />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={async () => {
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    if (!text.trim()) throw new Error('Clipboard is empty.');
+                    setBridgeLink(text.trim());
+                    showToast('CameraBridge link pasted.', 'success');
+                  } catch (error) {
+                    showToast(error.message || 'Could not read the clipboard.', 'error');
+                  }
+                }}
+                style={{ padding: '10px 12px', fontSize: '12px' }}
+              >
+                <ClipboardPaste size={14} />
+                <span>Paste link</span>
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -718,14 +751,6 @@ const GatekeeperDashboard = () => {
               >
                 <XCircle size={14} />
                 <span>Remove link</span>
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={previewStatus === 'idle' ? openCameraPreview : () => {
-                previewSocketRef.current?.close();
-                previewPeerRef.current?.close();
-                setPreviewStatus('idle');
-              }} disabled={bridgeStatus !== 'connected'}>
-                <Eye size={14} />
-                <span>{previewStatus === 'live' ? 'Close preview' : 'Preview camera'}</span>
               </button>
             </div>
             <div style={{ color: bridgeStatus === 'connected' ? '#34d399' : 'var(--text-secondary)', fontSize: '11px', marginTop: '8px' }}>
@@ -749,17 +774,10 @@ const GatekeeperDashboard = () => {
                 {bridgeScanStatus === 'scanned' ? 'Ticket scanned — validating with EventZ…' : bridgeScanStatus === 'success' ? 'Successful entry — ticket approved.' : 'Error — ticket rejected by EventZ.'}
               </div>
             )}
-            {previewStatus !== 'idle' && (
-              <div style={{ marginTop: '12px' }}>
-                <video ref={previewVideoRef} autoPlay playsInline muted style={{ width: '100%', maxHeight: '260px', borderRadius: '8px', background: '#050509' }} />
-                <div style={{ color: 'var(--text-secondary)', fontSize: '11px', marginTop: '5px' }}>
-                  {previewStatus === 'live' ? 'Live mobile camera preview.' : previewStatus === 'waiting' || previewStatus === 'connecting' ? 'Waiting for the phone camera…' : previewStatus === 'expired' ? 'Mobile camera session ended.' : 'Camera preview unavailable.'}
-                </div>
-              </div>
-            )}
           </div>
+          )}
           {/* Tab selection */}
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
+          <div className="camera-source-tabs" style={{ order: 1, display: 'flex', gap: '10px', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
             <button
               onClick={() => setActiveTab('paste')}
               className="btn btn-secondary"
@@ -791,7 +809,11 @@ const GatekeeperDashboard = () => {
             </button>
 
             <button
-              onClick={() => setActiveTab('camera')}
+              onClick={() => {
+                stopCameraScan();
+                setCameraSource('choose');
+                setActiveTab('camera');
+              }}
               className="btn btn-secondary"
               style={{
                 flex: 1,
@@ -808,7 +830,7 @@ const GatekeeperDashboard = () => {
 
           {/* Form */}
           {activeTab === 'paste' && (
-            <form onSubmit={handleValidate}>
+            <form onSubmit={handleValidate} style={{ order: 2 }}>
               <div className="form-group">
                 <label className="form-label">Paste Ticket QR Code Signature (Signed JWT Token)</label>
                 <textarea
@@ -830,7 +852,7 @@ const GatekeeperDashboard = () => {
           )}
 
           {activeTab === 'upload' && (
-            <div style={{ textAlign: 'center', padding: '1.5rem 1rem', border: '2px dashed var(--glass-border)', borderRadius: '8px' }}>
+            <div style={{ order: 2, textAlign: 'center', padding: '1.5rem 1rem', border: '2px dashed var(--glass-border)', borderRadius: '8px' }}>
               <FileUp size={36} style={{ color: 'var(--text-muted)', marginBottom: '10px' }} />
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '14px' }}>
                 Load a QR image, screenshot, or raw token text file.
@@ -849,7 +871,67 @@ const GatekeeperDashboard = () => {
           )}
 
           {activeTab === 'camera' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ order: 2, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {cameraSource === 'choose' && (
+                <div style={{
+                  padding: '18px',
+                  border: '1px solid rgba(124, 58, 237, 0.45)',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.14), rgba(30, 30, 45, 0.5))'
+                }}>
+                  <div style={{ color: '#fff', fontSize: '15px', fontWeight: 800, marginBottom: '5px' }}>
+                    Choose your camera source
+                  </div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginBottom: '14px', lineHeight: 1.45 }}>
+                    Use the camera connected to this computer, or scan with a phone through Mobile Cam Bridge.
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setCameraSource('local')}
+                      style={{ minHeight: '76px', justifyContent: 'flex-start', textAlign: 'left', padding: '12px' }}
+                    >
+                      <Laptop size={20} />
+                      <span><strong style={{ display: 'block', color: '#fff' }}>This computer</strong><small style={{ color: 'var(--text-secondary)' }}>Use PC webcam</small></span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setCameraSource('external');
+                        if (bridgeLink.trim()) {
+                          connectMobileBridge();
+                        } else {
+                          showToast('Paste a Mobile Cam Bridge link above, then connect it.', 'info');
+                        }
+                      }}
+                      style={{ minHeight: '76px', justifyContent: 'flex-start', textAlign: 'left', padding: '12px' }}
+                    >
+                      <Smartphone size={20} />
+                      <span><strong style={{ display: 'block', color: '#fff' }}>External camera</strong><small style={{ color: 'var(--text-secondary)' }}>Use Mobile Cam Bridge</small></span>
+                    </button>
+                  </div>
+                </div>
+              )}
+              {cameraSource === 'external' && (
+                <div style={{
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(52, 211, 153, 0.3)',
+                  background: 'rgba(16, 185, 129, 0.08)',
+                  color: 'var(--text-secondary)',
+                  fontSize: '12px',
+                  lineHeight: 1.45
+                }}>
+                  External camera selected. Connect the Mobile Cam Bridge above; incoming phone scans will validate automatically.
+                  <button type="button" className="btn btn-secondary" onClick={() => setCameraSource('choose')} style={{ marginTop: '10px', padding: '7px 10px', fontSize: '11px' }}>
+                    Change camera source
+                  </button>
+                </div>
+              )}
+              {cameraSource === 'choose' || cameraSource === 'external' ? null : (
+                <>
               <div style={{
                 position: 'relative',
                 borderRadius: '12px',
@@ -927,6 +1009,8 @@ const GatekeeperDashboard = () => {
                   Stop Camera
                 </button>
               </div>
+                </>
+              )}
             </div>
           )}
         </div>
