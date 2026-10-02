@@ -35,13 +35,18 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'User no longer exists' });
     }
 
-    // Check if user is blocked
-    if (user.status === 'blocked') {
+    // Check if user is not allowed to access the application
+    if (['blocked', 'pending', 'rejected'].includes(user.status)) {
       res.cookie('token', 'none', {
         expires: new Date(Date.now() + 10 * 1000),
         httpOnly: true
       });
-      return res.status(403).json({ success: false, message: 'Your account has been blocked' });
+      const messages = {
+        blocked: 'Your account has been blocked',
+        pending: 'Your gatekeeper account is awaiting administrator approval',
+        rejected: 'Your gatekeeper registration was rejected by an administrator'
+      };
+      return res.status(403).json({ success: false, message: messages[user.status] });
     }
 
     req.user = user;

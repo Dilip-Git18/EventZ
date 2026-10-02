@@ -2,6 +2,8 @@ import express from 'express';
 import User from '../models/User.js';
 import Event from '../models/Event.js';
 import Booking from '../models/Booking.js';
+import Ticket from '../models/Ticket.js';
+import ScanLog from '../models/ScanLog.js';
 import { protect, authorizeRole } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -49,6 +51,86 @@ router.put('/users/:id/status', async (req, res, next) => {
         status: user.status
       }
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// @desc    Approve or reject a gatekeeper registration
+// @route   PUT /api/admin/users/:id/approval
+// @access  Private (Admin)
+router.put('/users/:id/approval', async (req, res, next) => {
+  try {
+    const { action } = req.body;
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Approval action must be approve or reject' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    if (user.role !== 'gatekeeper') {
+      return res.status(400).json({ success: false, message: 'Only gatekeeper registrations require approval' });
+    }
+    if (action === 'approve' && !['pending', 'rejected'].includes(user.status)) {
+      return res.status(400).json({ success: false, message: 'Only pending or rejected gatekeepers can be approved' });
+    }
+    if (action === 'reject' && user.status !== 'pending') {
+      return res.status(400).json({ success: false, message: 'This gatekeeper cannot be approved or rejected in its current state' });
+    }
+
+    user.status = action === 'approve' ? 'active' : 'rejected';
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: action === 'approve'
+        ? 'Gatekeeper account approved successfully'
+        : 'Gatekeeper registration rejected',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// @desc    Delete a user account when it has no related records
+// @route   DELETE /api/admin/users/:id
+// @access  Private (Admin)
+router.delete('/users/:id', async (req, res, next) => {
+  try {
+    if (req.params.id === req.user._id.toString()) {
+      return res.status(400).json({ success: false, message: 'Admins cannot delete their own account' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const [eventCount, bookingCount, ticketCount, scanLogCount] = await Promise.all([
+      Event.countDocuments({ organizer: user._id }),
+      Booking.countDocuments({ buyer: user._id }),
+      Ticket.countDocuments({ buyer: user._id }),
+      ScanLog.countDocuments({ $or: [{ gatekeeper: user._id }, { buyer: user._id }] })
+    ]);
+
+    if (eventCount || bookingCount || ticketCount || scanLogCount) {
+      return res.status(409).json({
+        success: false,
+        message: 'This user has related events, bookings, tickets, or scan history. Block the account instead of deleting it.'
+      });
+    }
+
+    await User.deleteOne({ _id: user._id });
+    res.status(200).json({ success: true, message: 'User account deleted successfully', userId: user._id });
   } catch (error) {
     next(error);
   }

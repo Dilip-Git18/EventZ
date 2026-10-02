@@ -182,6 +182,9 @@ const GatekeeperDashboard = () => {
         const message = JSON.parse(data);
         if (message.type === 'ready') {
           setBridgeStatus('connected');
+          setMobileStatus(message.mobileConnected ? 'connected' : 'waiting');
+        } else if (message.type === 'connection-state') {
+          setMobileStatus(message.mobileConnected ? 'connected' : 'disconnected');
         } else if (message.type === 'bridge-status') {
           setMobileStatus(message.status === 'mobile-connected' ? 'connected' : 'disconnected');
         } else if (message.type === 'event' && message.event?.type === 'scan') {

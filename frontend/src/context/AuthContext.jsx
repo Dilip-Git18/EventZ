@@ -43,7 +43,13 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
       }
 
-      const data = await response.json();
+      const responseText = await response.text();
+      let data;
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        throw new Error(`API returned an unexpected response (${response.status}). Check that the EventZ backend is running at ${API_BASE_URL}.`);
+      }
       if (!response.ok) {
         const apiErr = new Error(data.message || 'API request failed');
         Object.assign(apiErr, data);
@@ -84,6 +90,10 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify({ name, email, password, role })
       });
       if (data.success) {
+        if (data.pendingApproval) {
+          showToast(data.message, 'success');
+          return 'pending';
+        }
         setUser(data.user);
         showToast('Registration successful! Welcome.', 'success');
         return true;

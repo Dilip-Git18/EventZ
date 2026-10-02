@@ -70,7 +70,19 @@ router.post('/register', async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'User already exists with this email' });
     }
 
-    const user = await User.create(validatedData);
+    const user = await User.create({
+      ...validatedData,
+      status: validatedData.role === 'gatekeeper' ? 'pending' : 'active'
+    });
+
+    if (user.role === 'gatekeeper') {
+      return res.status(201).json({
+        success: true,
+        pendingApproval: true,
+        message: 'Gatekeeper registration submitted. An administrator must approve your account before you can log in.'
+      });
+    }
+
     sendTokenResponse(user, 201, res);
   } catch (error) {
     next(error);
@@ -93,6 +105,12 @@ router.post('/login', async (req, res, next) => {
     // Check if blocked
     if (user.status === 'blocked') {
       return res.status(403).json({ success: false, message: 'Your account has been blocked' });
+    }
+    if (user.status === 'pending') {
+      return res.status(403).json({ success: false, message: 'Your gatekeeper account is awaiting administrator approval' });
+    }
+    if (user.status === 'rejected') {
+      return res.status(403).json({ success: false, message: 'Your gatekeeper registration was rejected by an administrator' });
     }
 
     // Check password

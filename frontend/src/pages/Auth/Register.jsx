@@ -20,7 +20,9 @@ const Register = () => {
     const success = await register(name, email, password, role);
     setSubmitting(false);
 
-    if (success) {
+    if (success === 'pending') {
+      navigate('/login');
+    } else if (success) {
       navigate('/');
     }
   };
@@ -117,6 +119,11 @@ const Register = () => {
               <option value="organizer">Event Organizer / Company</option>
               <option value="gatekeeper">Venue Gatekeeper</option>
             </select>
+            {role === 'gatekeeper' && (
+              <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: '6px 0 0' }}>
+                Gatekeeper accounts require administrator approval before login.
+              </p>
+            )}
           </div>
 
           {/* CTA */}

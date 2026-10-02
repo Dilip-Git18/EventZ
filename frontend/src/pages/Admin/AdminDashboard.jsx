@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Loader from '../../components/Common/Loader';
-import { ShieldAlert, Users, Calendar, DollarSign, Search, ShieldCheck, UserX, UserCheck } from 'lucide-react';
+import { ShieldAlert, Users, Calendar, DollarSign, Search, ShieldCheck, ShieldX, UserX, UserCheck, Trash2 } from 'lucide-react';
 
 const AdminDashboard = () => {
   const { apiFetch, showToast, user: currentUser } = useAuth();
@@ -53,6 +53,49 @@ const AdminDashboard = () => {
           prev.map((u) => (u._id === userId ? { ...u, status: data.user.status } : u))
         );
         // Refresh statistics (blocked count might affect things later)
+        const statsData = await apiFetch('/admin/system-stats');
+        if (statsData.success) setStats(statsData.stats);
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const handleGatekeeperApproval = async (userId, action) => {
+    setTogglingId(userId);
+    try {
+      const data = await apiFetch(`/admin/users/${userId}/approval`, {
+        method: 'PUT',
+        body: JSON.stringify({ action })
+      });
+      if (data.success) {
+        showToast(data.message, 'success');
+        setUsers((prev) => prev.map((u) => (
+          u._id === userId ? { ...u, status: data.user.status } : u
+        )));
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const handleDeleteUser = async (user) => {
+    if (user._id === currentUser.id) {
+      showToast('You cannot delete your own administrator account.', 'warning');
+      return;
+    }
+    if (!window.confirm(`Delete ${user.name}'s account permanently? This cannot be undone.`)) return;
+
+    setTogglingId(user._id);
+    try {
+      const data = await apiFetch(`/admin/users/${user._id}`, { method: 'DELETE' });
+      if (data.success) {
+        showToast(data.message, 'success');
+        setUsers((prev) => prev.filter((item) => item._id !== user._id));
         const statsData = await apiFetch('/admin/system-stats');
         if (statsData.success) setStats(statsData.stats);
       }
@@ -242,6 +285,8 @@ const AdminDashboard = () => {
             {filteredUsers.length > 0 ? (
               filteredUsers.map((u) => {
                 const isBlocked = u.status === 'blocked';
+                const isPending = u.role === 'gatekeeper' && u.status === 'pending';
+                const isRejected = u.role === 'gatekeeper' && u.status === 'rejected';
                 const isMe = u._id === currentUser.id;
 
                 return (
@@ -250,37 +295,47 @@ const AdminDashboard = () => {
                     <td style={{ padding: '14px 8px' }}>{u.email}</td>
                     <td style={{ padding: '14px 8px', textTransform: 'capitalize' }}>{u.role}</td>
                     <td style={{ padding: '14px 8px', textAlign: 'center' }}>
-                      {isBlocked ? (
+                      {isPending ? (
+                        <span className="badge" style={{ fontSize: '10px', color: '#fbbf24', background: 'rgba(251, 191, 36, .12)' }}>Pending approval</span>
+                      ) : isRejected ? (
+                        <span className="badge badge-cancelled" style={{ fontSize: '10px' }}>Rejected</span>
+                      ) : isBlocked ? (
                         <span className="badge badge-cancelled" style={{ fontSize: '10px' }}>Blocked</span>
                       ) : (
                         <span className="badge badge-confirmed" style={{ fontSize: '10px' }}>Active</span>
                       )}
                     </td>
                     <td style={{ padding: '14px 8px', textAlign: 'center' }}>
-                      <button
-                        onClick={() => handleToggleStatus(u._id)}
-                        className={`btn ${isBlocked ? 'btn-primary' : 'btn-danger'}`}
-                        style={{
-                          padding: '6px 12px',
-                          fontSize: '11px',
-                          borderRadius: '4px',
-                          opacity: isMe ? 0.3 : 1,
-                          cursor: isMe ? 'not-allowed' : 'pointer'
-                        }}
-                        disabled={togglingId === u._id || isMe}
-                      >
-                        {isBlocked ? (
-                          <>
-                            <UserCheck size={12} />
-                            <span>Unblock</span>
-                          </>
-                        ) : (
-                          <>
-                            <UserX size={12} />
-                            <span>Block User</span>
-                          </>
-                        )}
-                      </button>
+                      {isPending ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', flexWrap: 'nowrap' }}>
+                          <button className="btn btn-primary" title="Approve gatekeeper" style={{ padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap' }} onClick={() => handleGatekeeperApproval(u._id, 'approve')} disabled={togglingId === u._id}>
+                            <ShieldCheck size={13} /> Approve
+                          </button>
+                          <button className="btn btn-danger" title="Reject gatekeeper" style={{ padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap' }} onClick={() => handleGatekeeperApproval(u._id, 'reject')} disabled={togglingId === u._id}>
+                            <ShieldX size={13} /> Reject
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleToggleStatus(u._id)}
+                          className={`btn ${isBlocked ? 'btn-primary' : 'btn-danger'}`}
+                          style={{ padding: '6px 12px', fontSize: '11px', borderRadius: '4px', opacity: isMe ? 0.3 : 1, cursor: isMe ? 'not-allowed' : 'pointer' }}
+                          disabled={togglingId === u._id || isMe}
+                        >
+                          {isBlocked ? <><UserCheck size={12} /><span>Unblock</span></> : <><UserX size={12} /><span>Block User</span></>}
+                        </button>
+                      )}
+                      {!isMe && (
+                        <button
+                          onClick={() => handleDeleteUser(u)}
+                          className="btn btn-danger"
+                          title="Delete user permanently"
+                          style={{ padding: '6px 8px', fontSize: '11px', marginLeft: '6px', marginTop: '6px' }}
+                          disabled={togglingId === u._id}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

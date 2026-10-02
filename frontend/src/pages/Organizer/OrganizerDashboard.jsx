@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Loader from '../../components/Common/Loader';
-import { DollarSign, Ticket, Users, BarChart3, PlusCircle, Percent, MapPin, CircleAlert } from 'lucide-react';
+import { DollarSign, Ticket, Users, BarChart3, PlusCircle, Percent, MapPin, CircleAlert, Edit3, Save, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const OrganizerDashboard = () => {
@@ -9,6 +9,11 @@ const OrganizerDashboard = () => {
   const [analytics, setAnalytics] = useState(null);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [eventForm, setEventForm] = useState({});
+  const [savingEvent, setSavingEvent] = useState(false);
+  const [categoryForm, setCategoryForm] = useState({ name: '', price: '', capacity: '' });
+  const [savingCategory, setSavingCategory] = useState(false);
 
   const fetchDashboardData = async () => {
     try {
@@ -29,6 +34,79 @@ const OrganizerDashboard = () => {
   useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  const openEditor = async (event) => {
+    let editorEvent = event;
+    try {
+      const data = await apiFetch(`/events/${event._id}`);
+      if (data.success && data.event) editorEvent = data.event;
+    } catch (error) {
+      showToast('Could not load the latest ticket categories.', 'error');
+    }
+    setEditingEvent(editorEvent);
+    setEventForm({
+      title: editorEvent.title || '',
+      description: editorEvent.description || '',
+      venueName: editorEvent.venueName || '',
+      venueAddress: editorEvent.venueAddress || '',
+      startDate: editorEvent.startDate ? editorEvent.startDate.slice(0, 16) : '',
+      endDate: editorEvent.endDate ? editorEvent.endDate.slice(0, 16) : ''
+    });
+    setCategoryForm({ name: '', price: '', capacity: '' });
+  };
+
+  const saveEvent = async (event) => {
+    setSavingEvent(true);
+    try {
+      const data = await apiFetch(`/events/${event._id}`, { method: 'PUT', body: JSON.stringify(eventForm) });
+      if (data.success) {
+        setEvents((current) => current.map((item) => item._id === event._id ? { ...item, ...data.event } : item));
+        showToast('Event details updated.', 'success');
+      }
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setSavingEvent(false);
+    }
+  };
+
+  const updateCategory = async (event, category, field, value) => {
+    const parsedValue = field === 'name' ? value : Number(value);
+    try {
+      const data = await apiFetch(`/events/${event._id}/categories/${category._id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ [field]: parsedValue })
+      });
+      if (data.success) {
+        setEditingEvent((current) => ({ ...current, categories: current.categories.map((item) => item._id === category._id ? data.category : item) }));
+        setEvents((current) => current.map((item) => item._id === event._id ? { ...item, categories: item.categories.map((entry) => entry._id === category._id ? data.category : entry) } : item));
+        showToast(`${category.name} updated.`, 'success');
+      }
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+  };
+
+  const addCategory = async (event) => {
+    setSavingCategory(true);
+    try {
+      const data = await apiFetch(`/events/${event._id}/categories`, {
+        method: 'POST',
+        body: JSON.stringify({ name: categoryForm.name.trim(), price: Number(categoryForm.price), capacity: Number(categoryForm.capacity) })
+      });
+      if (data.success) {
+        const categories = [...(editingEvent.categories || []), data.category];
+        setEditingEvent((current) => ({ ...current, categories, categoriesCount: categories.length, hasTicketsConfigured: true }));
+        setEvents((current) => current.map((item) => item._id === event._id ? { ...item, categories, categoriesCount: categories.length, hasTicketsConfigured: true } : item));
+        setCategoryForm({ name: '', price: '', capacity: '' });
+        showToast('Ticket category added.', 'success');
+      }
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setSavingCategory(false);
+    }
+  };
 
   if (loading) return <Loader fullPage />;
 
@@ -369,6 +447,10 @@ const OrganizerDashboard = () => {
                     <span>{formatEventDate(event.startDate)}</span>
                     <span>{event.categoriesCount || 0} categories</span>
                   </div>
+                  <button type="button" className="btn btn-secondary" onClick={() => openEditor(event)} style={{ width: '100%', justifyContent: 'center', padding: '9px', fontSize: '12px' }}>
+                    <Edit3 size={14} />
+                    <span>Edit event & ticket categories</span>
+                  </button>
 
                   {!event.hasTicketsConfigured && (
                     <div style={{
@@ -397,6 +479,45 @@ const OrganizerDashboard = () => {
           </div>
         )}
       </div>
+      {editingEvent && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'grid', placeItems: 'center', padding: '20px', background: 'rgba(3, 4, 8, .78)' }}>
+          <div className="glass-panel" style={{ width: 'min(760px, 100%)', maxHeight: '90vh', overflowY: 'auto', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+              <div>
+                <h3 style={{ color: '#fff', margin: 0 }}>Edit {editingEvent.title}</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: '5px 0 0' }}>Update event details, capacity, or add a ticket category.</p>
+              </div>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditingEvent(null)}><X size={16} /></button>
+            </div>
+            <div style={{ display: 'grid', gap: '10px' }}>
+              {['title', 'venueName', 'venueAddress'].map((field) => (
+                <input key={field} className="form-control" placeholder={field === 'venueName' ? 'Venue name' : field === 'venueAddress' ? 'Venue address' : 'Event title'} value={eventForm[field]} onChange={(e) => setEventForm({ ...eventForm, [field]: e.target.value })} />
+              ))}
+              <textarea className="form-control" rows="3" placeholder="Event description" value={eventForm.description} onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <label className="form-label">Start<input className="form-control" type="datetime-local" value={eventForm.startDate} onChange={(e) => setEventForm({ ...eventForm, startDate: e.target.value })} /></label>
+                <label className="form-label">End<input className="form-control" type="datetime-local" value={eventForm.endDate} onChange={(e) => setEventForm({ ...eventForm, endDate: e.target.value })} /></label>
+              </div>
+              <button type="button" className="btn btn-primary" onClick={() => saveEvent(editingEvent)} disabled={savingEvent}><Save size={14} />{savingEvent ? 'Saving…' : 'Save event details'}</button>
+            </div>
+            <h4 style={{ color: '#fff', margin: '24px 0 10px' }}>Existing ticket categories</h4>
+            {(editingEvent.categories || []).length > 0 ? (editingEvent.categories || []).map((category) => (
+              <div key={category._id} style={{ display: 'grid', gridTemplateColumns: '1.4fr .8fr .8fr', gap: '8px', marginBottom: '8px', padding: '10px', border: '1px solid var(--glass-border)', borderRadius: '8px' }}>
+                <label className="form-label">Category<input className="form-control" value={category.name} onChange={(e) => setEditingEvent({ ...editingEvent, categories: editingEvent.categories.map((item) => item._id === category._id ? { ...item, name: e.target.value } : item) })} onBlur={(e) => updateCategory(editingEvent, category, 'name', e.target.value)} /></label>
+                <label className="form-label">Price<input className="form-control" type="number" min="0" value={category.price} onChange={(e) => setEditingEvent({ ...editingEvent, categories: editingEvent.categories.map((item) => item._id === category._id ? { ...item, price: e.target.value } : item) })} onBlur={(e) => updateCategory(editingEvent, category, 'price', e.target.value)} /></label>
+                <label className="form-label">Capacity<input className="form-control" type="number" min="1" value={category.capacity} onChange={(e) => setEditingEvent({ ...editingEvent, categories: editingEvent.categories.map((item) => item._id === category._id ? { ...item, capacity: e.target.value } : item) })} onBlur={(e) => updateCategory(editingEvent, category, 'capacity', e.target.value)} /></label>
+              </div>
+            )) : <p style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>No categories configured yet. Add the first category below.</p>}
+            <h4 style={{ color: '#fff', margin: '22px 0 10px' }}>Add another ticket category</h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr .8fr .8fr auto', gap: '8px' }}>
+              <input className="form-control" placeholder="Category name" value={categoryForm.name} onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })} />
+              <input className="form-control" type="number" min="0" placeholder="Price" value={categoryForm.price} onChange={(e) => setCategoryForm({ ...categoryForm, price: e.target.value })} />
+              <input className="form-control" type="number" min="1" placeholder="Capacity" value={categoryForm.capacity} onChange={(e) => setCategoryForm({ ...categoryForm, capacity: e.target.value })} />
+              <button type="button" className="btn btn-secondary" onClick={() => addCategory(editingEvent)} disabled={savingCategory || !categoryForm.name || !categoryForm.capacity}><PlusCircle size={14} />Add</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

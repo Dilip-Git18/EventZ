@@ -174,6 +174,13 @@ router.get('/events', protect, authorizeRole('organizer'), async (req, res, next
         ...event,
         categoriesCount: eventCategories.length,
         hasTicketsConfigured: eventCategories.length > 0
+        ,
+        categories: eventCategories.map((category) => ({
+          _id: category._id,
+          name: category.name,
+          price: category.price,
+          capacity: category.capacity
+        }))
       };
     });
 

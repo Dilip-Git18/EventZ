@@ -293,4 +293,31 @@ router.post('/:id/categories', protect, authorizeRole('organizer'), async (req, 
   }
 });
 
+router.put('/:id/categories/:categoryId', protect, authorizeRole('organizer'), async (req, res, next) => {
+  try {
+    const event = await Event.findOne({ _id: req.params.id, organizer: req.user._id });
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
+
+    const category = await TicketCategory.findOne({ _id: req.params.categoryId, event: event._id });
+    if (!category) return res.status(404).json({ success: false, message: 'Ticket category not found' });
+
+    const validatedData = categorySchema.partial().parse(req.body);
+    if (validatedData.capacity !== undefined) {
+      const bookingTotals = await Booking.aggregate([
+        { $match: { category: category._id, status: { $in: ['PENDING', 'CONFIRMED'] } } },
+        { $group: { _id: null, quantity: { $sum: '$quantity' } } }
+      ]);
+      const sold = bookingTotals[0]?.quantity || 0;
+      if (validatedData.capacity < sold) {
+        return res.status(400).json({ success: false, message: `Capacity cannot be below ${sold} reserved ticket${sold === 1 ? '' : 's'}.` });
+      }
+    }
+
+    const updatedCategory = await TicketCategory.findByIdAndUpdate(category._id, validatedData, { new: true, runValidators: true });
+    res.status(200).json({ success: true, category: updatedCategory });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;
