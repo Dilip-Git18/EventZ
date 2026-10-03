@@ -50,86 +50,45 @@ The project focuses on a reliable ticket lifecycle: buyers reserve tickets, comp
 I built EventZ as a role-based ticketing application and integrated my separately deployed **[CameraBridge live service](https://camerabridge.onrender.com)** for phone-camera scanning. The single graph below shows how the user interfaces, EventZ API, CameraBridge, MongoDB, and Redis work together across booking, entry validation, organizer reporting, and administration.
 
 ```mermaid
-flowchart TB
-  subgraph Users["People and devices"]
-    Buyer["Buyer"]
-    Organizer["Organizer"]
-    Gatekeeper["Gatekeeper"]
-    Admin["Administrator"]
-    Phone["Phone camera"]
-  end
+flowchart TD
+  People["BUYER · ORGANIZER · GATEKEEPER · ADMIN"]
+  Web["EVENTZ WEB APP<br/>Browse and buy tickets · Organizer dashboard and Event Stats<br/>Gatekeeper scanner · Admin tools"]
+  API["EVENTZ EXPRESS API<br/>JWT login · Role/ownership checks · Business rules"]
+  Booking["BOOKING<br/>Check inventory · 5-minute reservation · Issue signed QR tickets"]
+  Entry["TICKET ENTRY<br/>Verify QR, event and booking · Reject duplicate/invalid scans"]
+  Organizer["ORGANIZER TOOLS<br/>Events, sales, ticket lookup · Import scan report"]
+  Admin["ADMIN TOOLS<br/>Manage users and platform activity"]
+  Redis[("REDIS<br/>Inventory locks and temporary reservations")]
+  Mongo[("MONGODB<br/>Users · Events · Bookings · Tickets · Approved scan logs")]
+  Rejected[("REJECTED SCAN REPORT<br/>Latest per event: ticket numbers and attempt counts")]
+  Phone["PHONE CAMERA"]
+  Bridge["MY CAMERABRIDGE SERVICE<br/>camerabridge.onrender.com<br/>Short-lived pairing · WebSocket relay only"]
+  Gate["EVENTZ GATEKEEPER BROWSER<br/>Read-only bridge viewer · Uses EventZ login to validate"]
 
-  subgraph Frontend["EventZ React application"]
-    BuyerPage["Browse events<br/>Checkout<br/>My Tickets"]
-    OrganizerPage["Create/manage events<br/>Bookings and analytics"]
-    StatsPage["Event Stats<br/>Ticket lookup and scan-sheet import"]
-    GatePage["Ticket scanner<br/>Validation result and scan history"]
-    AdminPage["Platform management"]
-  end
+  People --> Web
+  Web --> API
+  API --> Booking
+  Booking --> Redis
+  Booking -->|"Confirmed booking and signed tickets"| Mongo
+  API --> Entry
+  Entry <-->|"Read ticket; mark valid entry USED"| Mongo
+  API --> Organizer
+  Organizer <-->|"Organizer-owned events and ticket data"| Mongo
+  Organizer -->|"Save / reload rejected ticket counts"| Rejected
+  API --> Admin
+  Admin <-->|"Platform data"| Mongo
 
-  subgraph Backend["EventZ Express API"]
-    Auth["JWT session<br/>Role authorization<br/>Event ownership checks"]
-    Booking["Booking service<br/>Availability and checkout"]
-    Validation["Ticket validation<br/>Signature, event and booking checks"]
-    OrganizerAPI["Organizer APIs<br/>Tickets, analytics and reports"]
-    AdminAPI["Admin APIs"]
-  end
+  Phone <-->|"Pair, scan and receive result"| Bridge
+  Gate <-->|"Read-only viewer joins scan session"| Bridge
+  Gate -->|"Send scanned QR for validation"| API
+  API -->|"Accepted / rejected decision"| Gate
 
-  subgraph Bridge["My separate CameraBridge service<br/>camerabridge.onrender.com"]
-    Pair["Short-lived session<br/>Phone pairing + read-only viewer"]
-    Relay["WebSocket scan/result relay<br/>No ticket approval authority"]
-  end
-
-  Redis[("Redis<br/>Temporary reservations<br/>Inventory coordination")]
-  Mongo[("MongoDB<br/>Users, events, bookings, tickets,<br/>approved scan logs and RejectedScanReport")]
-
-  Buyer --> BuyerPage
-  Organizer --> OrganizerPage
-  Organizer --> StatsPage
-  Gatekeeper --> GatePage
-  Admin --> AdminPage
-
-  BuyerPage -->|"Browse, reserve and checkout"| Auth
-  Auth --> Booking
-  Booking -->|"Lock, check and release inventory"| Redis
-  Booking -->|"Save booking; issue individual<br/>signed QR tickets"| Mongo
-  Mongo -->|"Tickets and QR data"| BuyerPage
-
-  OrganizerPage -->|"Manage events, view sales"| Auth
-  StatsPage -->|"Load organizer-owned event tickets"| Auth
-  Auth --> OrganizerAPI
-  OrganizerAPI <-->|"Events, categories, bookings,<br/>revenue and ticket-holder data"| Mongo
-  StatsPage -->|"Search ticket number;<br/>show attendee and buyer details/photo"| OrganizerAPI
-  StatsPage -->|"Upload CSV; submit rejected<br/>ticket numbers and per-number counts"| Auth
-  OrganizerAPI -->|"Save latest event-scoped rejection report"| Mongo
-  Mongo -->|"Reload saved report after refresh"| OrganizerAPI
-  OrganizerAPI -->|"Return ticket data and saved report"| StatsPage
-  OrganizerAPI -->|"Return issued-ticket status for attendance view"| StatsPage
-
-  AdminPage --> Auth
-  Auth --> AdminAPI
-  AdminAPI <--> Mongo
-
-  Phone -->|"Pair with temporary mobile link"| Pair
-  GatePage -->|"Join same session with viewer link"| Pair
-  Pair --> Relay
-  Phone -->|"Scan QR; send value + scan ID"| Relay
-  Relay -->|"WebSocket scan event"| GatePage
-  GatePage -->|"Submit signed QR using<br/>gatekeeper's EventZ login"| Auth
-  Auth --> Validation
-  Validation <-->|"Read ticket and booking;<br/>mark valid ticket USED;<br/>record approved entry"| Mongo
-  Validation -->|"Accepted or rejected result<br/>with matching scan ID"| GatePage
-  GatePage -->|"Relay validation result"| Relay
-  Relay -->|"Display scan result"| Phone
-
-  classDef person fill:#172033,stroke:#64748b,color:#f8fafc;
-  classDef ui fill:#312e81,stroke:#8b5cf6,color:#fff;
+  classDef people fill:#172033,stroke:#64748b,color:#f8fafc;
   classDef app fill:#164e63,stroke:#22d3ee,color:#fff;
   classDef storage fill:#14532d,stroke:#4ade80,color:#fff;
-  class Buyer,Organizer,Gatekeeper,Admin,Phone person;
-  class BuyerPage,OrganizerPage,StatsPage,GatePage,AdminPage ui;
-  class Auth,Booking,Validation,OrganizerAPI,AdminAPI,Pair,Relay app;
-  class Redis,Mongo storage;
+  class People,Phone people;
+  class Web,API,Booking,Entry,Organizer,Admin,Bridge,Gate app;
+  class Redis,Mongo,Rejected storage;
 ```
 
 ### How EventZ works
@@ -162,8 +121,6 @@ EventZ saves the latest rejected ticket numbers and rejection count for each num
 - **Concurrency control:** Redis locks coordinate temporary ticket inventory reservations.
 - **Persistent versus transient state:** MongoDB stores EventZ records and rejection summaries; CameraBridge session connections are temporary and in-memory.
 - **Operational trade-offs:** independent deployment and reuse add another service to monitor, and the bridge's in-memory sessions need a distributed design before scaling to multiple instances.
-
-For the live scanning service, its API, and exact Render deployment steps, see the [CameraBridge project guide](./mobile-cam/README.md).
 
 ## Run locally
 
